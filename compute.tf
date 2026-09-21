@@ -1,17 +1,21 @@
-#resource "aws_instance" "web" {
-#  ami           = var.ami_id
-#  instance_type = var.instance_type
-#
-#  tags = {
-#    Name = "web-server"
-#  }
-#}
+data "aws_ami" "ubuntu" {
+  most_recent = true
+
+  owners = ["099720109477"]
+
+  filter {
+    name   = "name"
+    values = ["ubuntu/images/hvm-ssd-gp3/ubuntu-noble-24.04-amd64-server-*"]
+  }
+}
+
 resource "aws_instance" "app_server" {
+  count = var.instance_count
+
   ami           = data.aws_ami.ubuntu.id
-  count         = 2
-  instance_type = "t3.micro"
+  instance_type = var.instance_type
 
   tags = {
-    Name = "learn-terraform"
+    Name = "learn-terraform-${count.index + 1}"
   }
 }

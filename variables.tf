@@ -1,17 +1,23 @@
 variable "aws_region" {
-  type    = string
-  default = "eu-west-2"
+  description = "AWS region in which resources will be deployed"
+  type        = string
+  default     = "eu-central-2"
 }
 
-variable "ami_id" {
-  type = string
+variable "instance_count" {
+  description = "Number of application instances"
+  type        = number
+  default     = 2
 }
 
 variable "instance_type" {
-  type    = string
-  default = "t3.micro"
+  description = "EC2 instance type"
+  type        = string
+  default     = "t3.micro"
 }
 
-variable "bucket_name" {
-  type = string
+variable "s3_bucket_name" {
+  description = "Name of the S3 bucket"
+  type        = string
+  default     = "tr-terraform-test159"
 }
