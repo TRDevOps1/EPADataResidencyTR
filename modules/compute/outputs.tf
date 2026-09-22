@@ -1,4 +1,3 @@
-modules/compute/outputs.tf
 output "instance_ids" {
   description = "IDs of the application EC2 instances"
   value       = aws_instance.app_server[*].id
