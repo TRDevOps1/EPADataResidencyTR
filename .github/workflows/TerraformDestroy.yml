@@ -18,7 +18,7 @@ jobs:
  
     defaults:
       run:
-        working-directory: .
+        working-directory: environments/
  
     steps:
       - name: Checkout
