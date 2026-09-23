@@ -18,7 +18,7 @@ jobs:
  
     defaults:
       run:
-        working-directory: .
+        working-directory: 'environments/**'
  
     steps:
       - name: Checkout
@@ -43,7 +43,7 @@ jobs:
         run: terraform init
  
       - name: Terraform Format
-        run: terraform fmt #-check - caused error
+        run: terraform fmt -check -recursive
  
       - name: Terraform Validate
         run: terraform validate
