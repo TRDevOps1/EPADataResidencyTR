@@ -4,7 +4,7 @@ on:
  workflow_dispatch: 
   push:
     branches:
-      - test
+      - test1
  
   pull_request:
  
@@ -52,6 +52,6 @@ jobs:
         run: terraform plan -out=tfplan
  
       - name: Terraform Apply
-        if: github.ref == 'refs/heads/test'
+        if: github.ref == 'refs/heads/test1'
         run: terraform apply -auto-approve tfplan
        
