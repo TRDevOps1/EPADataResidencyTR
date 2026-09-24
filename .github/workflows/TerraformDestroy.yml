@@ -4,7 +4,7 @@ on:
  workflow_dispatch: 
   push:
     branches:
-      - test
+      - test_2
  
   pull_request:
  
