@@ -10,3 +10,7 @@ module "storage" {
 
   bucket_name = var.s3_bucket_name
 }
+
+module "webapp" {
+  source = "./modules/webapp"
+}
