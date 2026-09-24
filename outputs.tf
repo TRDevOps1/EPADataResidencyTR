@@ -23,3 +23,6 @@ output "s3_bucket_arn" {
   value       = module.storage.bucket_arn
 }
 
+output "website_url" {
+  value = "http://${aws_lb.web.dns_name}"
+}
