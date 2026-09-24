@@ -22,7 +22,3 @@ output "s3_bucket_arn" {
   description = "ARN of the application S3 bucket"
   value       = module.storage.bucket_arn
 }
-
-output "website_url" {
-  value = "http://${module.my_lb_module.dns_name}"
-}
