@@ -81,6 +81,14 @@ resource "aws_security_group" "web" {
     security_groups = [aws_security_group.alb.id]
   }
 
+  ingress {
+    description = "SSH from my IP"
+    from_port = 22
+    to_port = 22
+    protocol = "tcp"
+    cidr_blocks = ["34.244.35.127/32"]
+  }
+
   egress {
     from_port   = 0
     to_port     = 0
@@ -108,6 +116,8 @@ resource "aws_launch_template" "web" {
   name_prefix   = "webapp-"
   image_id      = data.aws_ami.amazon_linux.id
   instance_type = "t3.micro"
+
+  key_name = "my-keypair"
 
   user_data = base64encode(file("${path.module}/userdata.sh"))
 
