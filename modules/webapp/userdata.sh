@@ -50,7 +50,7 @@ cat > /var/www/html/index.html <<EOF
     </div>
 
     <div class="content">
-        <h1>AIG Test Web Server deployed successfully 29th September 2026</h1>
+        <h1>AIG Test Web Server deployed successfully 29th September 2026 v2</h1>
     </div>
 
 </body>
