@@ -181,4 +181,14 @@ resource "aws_autoscaling_group" "web" {
     id      = aws_launch_template.web.id
     version = "$Latest"
   }
+
+  instance_refresh {
+    strategy = "Rolling"
+
+    triggers = ["launch_template"]
+
+    preferences {
+      min_healthy_percentage = 50
+    }
+  }
 }
