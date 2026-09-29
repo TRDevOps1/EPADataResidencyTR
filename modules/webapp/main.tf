@@ -177,10 +177,15 @@ resource "aws_autoscaling_group" "web" {
 
   vpc_zone_identifier = aws_subnet.public[*].id
 
-  launch_template {
-    id      = aws_launch_template.web.id
-    version = "$Latest"
-  }
+launch_template {
+    id = aws_launch_template.web.id
+    version = aws_launch_template.web.latest_version
+}
+
+  #launch_template {
+  #  id      = aws_launch_template.web.id
+  #  version = "$Latest"
+  #}
 
   instance_refresh {
     strategy = "Rolling"
