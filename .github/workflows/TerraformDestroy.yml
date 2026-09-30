@@ -4,7 +4,7 @@ on:
  workflow_dispatch: 
   push:
     branches:
-      - test_2
+      - staging
  
   pull_request:
  
