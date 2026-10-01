@@ -1,44 +1,34 @@
 name: Terraform Destroy
- 
+
 on:
- workflow_dispatch: 
-  push:
-    branches:
-      - test
- 
-  pull_request:
- 
+  workflow_dispatch:
+
 permissions:
   id-token: write
   contents: read
- 
+
 jobs:
-  terraform:
+  terraform-destroy:
     runs-on: ubuntu-latest
- 
-    defaults:
-      run:
-        working-directory: .
- 
+
     steps:
       - name: Checkout
         uses: actions/checkout@v4
- 
-   
+
       - name: Configure AWS Credentials
         uses: aws-actions/configure-aws-credentials@v4
         with:
           role-to-assume: ${{ secrets.AWS_ROLE_ARN }}
-          aws-region: eu-central-2 #Zurich
- 
+          aws-region: eu-central-2
+
       - name: Setup Terraform
         uses: hashicorp/setup-terraform@v3
- 
+
       - name: Terraform Init
         run: terraform init
- 
+
       - name: Terraform Plan Destroy
-        run: terraform plan -destroy # Optional: Previews what will be deleted in the logs
+        run: terraform plan -destroy
 
       - name: Terraform Destroy
         run: terraform destroy -auto-approve
