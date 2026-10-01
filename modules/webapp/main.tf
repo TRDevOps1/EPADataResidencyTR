@@ -7,10 +7,6 @@ data "aws_availability_zones" "available" {}
 resource "aws_vpc" "main" {
   cidr_block           = var.vpc_cidr
   enable_dns_hostnames = true
-
-  tags = {
-    Name = "webapp-vpc"
-  }
 }
 
 resource "aws_internet_gateway" "igw" {
@@ -24,10 +20,6 @@ resource "aws_subnet" "public" {
   cidr_block              = cidrsubnet(var.vpc_cidr, 8, count.index)
   availability_zone       = data.aws_availability_zones.available.names[count.index]
   map_public_ip_on_launch = true
-
-  tags = {
-    Name = "public-${count.index}"
-  }
 }
 
 resource "aws_route_table" "public" {
@@ -56,22 +48,22 @@ resource "aws_security_group" "alb" {
   vpc_id = aws_vpc.main.id
 
   ingress {
-    from_port   = 80
-    to_port     = 80
-    protocol    = "tcp"
+    from_port = 80
+    to_port   = 80
+    protocol  = "tcp"
     cidr_blocks = ["0.0.0.0/0"]
   }
 
   egress {
-    from_port   = 0
-    to_port     = 0
-    protocol    = "-1"
+    from_port = 0
+    to_port   = 0
+    protocol  = "-1"
     cidr_blocks = ["0.0.0.0/0"]
   }
 }
 
-resource "aws_security_group" "web" {
-  name   = "web-sg"
+resource "aws_security_group" "ecs" {
+  name   = "ecs-sg"
   vpc_id = aws_vpc.main.id
 
   ingress {
@@ -81,49 +73,70 @@ resource "aws_security_group" "web" {
     security_groups = [aws_security_group.alb.id]
   }
 
-  ingress {
-    description = "SSH from my IP"
-    from_port = 22
-    to_port = 22
-    protocol = "tcp"
-    cidr_blocks = ["34.244.35.127/32"]
-  }
-
   egress {
-    from_port   = 0
-    to_port     = 0
-    protocol    = "-1"
+    from_port = 0
+    to_port   = 0
+    protocol  = "-1"
     cidr_blocks = ["0.0.0.0/0"]
   }
 }
 
 ###################
-# EC2
+# ECR
 ###################
 
-data "aws_ami" "amazon_linux" {
-  most_recent = true
-
-  owners = ["amazon"]
-
-  filter {
-    name   = "name"
-    values = ["al2023-ami-*"]
-  }
+resource "aws_ecr_repository" "webapp" {
+  name = "webapp"
 }
 
-resource "aws_launch_template" "web" {
-  name_prefix   = "webapp-"
-  image_id      = data.aws_ami.amazon_linux.id
-  instance_type = "t3.micro"
+###################
+# ECS
+###################
 
-  key_name = "my-keypair"
+resource "aws_ecs_cluster" "webapp" {
+  name = "webapp-cluster"
+}
 
-  user_data = base64encode(file("${path.module}/userdata.sh"))
+resource "aws_iam_role" "ecs_execution" {
+  name = "ecs-execution-role"
 
-  vpc_security_group_ids = [
-    aws_security_group.web.id
-  ]
+  assume_role_policy = jsonencode({
+    Version = "2012-10-17"
+    Statement = [{
+      Effect = "Allow"
+      Principal = {
+        Service = "ecs-tasks.amazonaws.com"
+      }
+      Action = "sts:AssumeRole"
+    }]
+  })
+}
+
+resource "aws_iam_role_policy_attachment" "ecs_execution" {
+  role       = aws_iam_role.ecs_execution.name
+  policy_arn = "arn:aws:iam::aws:policy/service-role/AmazonECSTaskExecutionRolePolicy"
+}
+
+resource "aws_ecs_task_definition" "webapp" {
+  family                   = "webapp"
+  requires_compatibilities = ["FARGATE"]
+  network_mode             = "awsvpc"
+
+  cpu    = 256
+  memory = 512
+
+  execution_role_arn = aws_iam_role.ecs_execution.arn
+
+  container_definitions = jsonencode([
+    {
+      name  = "webapp"
+      image = "${aws_ecr_repository.webapp.repository_url}:latest"
+
+      portMappings = [{
+        containerPort = 80
+      }]
+    }
+  ])
 }
 
 ###################
@@ -138,15 +151,11 @@ resource "aws_lb" "web" {
 }
 
 resource "aws_lb_target_group" "web" {
-  name     = "webapp-tg"
-  port     = 80
-  protocol = "HTTP"
-
-  vpc_id = aws_vpc.main.id
-
-  health_check {
-    path = "/"
-  }
+  name        = "webapp-tg"
+  port        = 80
+  protocol    = "HTTP"
+  target_type = "ip"
+  vpc_id      = aws_vpc.main.id
 }
 
 resource "aws_lb_listener" "http" {
@@ -155,45 +164,34 @@ resource "aws_lb_listener" "http" {
   protocol          = "HTTP"
 
   default_action {
-    type             = "forward"
+    type = "forward"
     target_group_arn = aws_lb_target_group.web.arn
   }
 }
 
 ###################
-# Auto Scaling Group
+# ECS Service
 ###################
 
-resource "aws_autoscaling_group" "web" {
-  name = "webapp-asg"
+resource "aws_ecs_service" "webapp" {
+  name            = "webapp"
+  cluster         = aws_ecs_cluster.webapp.id
+  task_definition = aws_ecs_task_definition.webapp.arn
 
-  min_size         = 2
-  desired_capacity = 2
-  max_size         = 4
+  launch_type   = "FARGATE"
+  desired_count = 2
 
-  target_group_arns = [
-    aws_lb_target_group.web.arn
-  ]
-
-  vpc_zone_identifier = aws_subnet.public[*].id
-
-launch_template {
-    id = aws_launch_template.web.id
-    version = aws_launch_template.web.latest_version
-}
-
-  #launch_template {
-  #  id      = aws_launch_template.web.id
-  #  version = "$Latest"
-  #}
-
-  instance_refresh {
-    strategy = "Rolling"
-
-    triggers = ["launch_template"]
-
-    preferences {
-      min_healthy_percentage = 50
-    }
+  network_configuration {
+    subnets          = aws_subnet.public[*].id
+    security_groups  = [aws_security_group.ecs.id]
+    assign_public_ip = true
   }
+
+  load_balancer {
+    target_group_arn = aws_lb_target_group.web.arn
+    container_name   = "webapp"
+    container_port   = 80
+  }
+
+  depends_on = [aws_lb_listener.http]
 }
