@@ -87,6 +87,7 @@ resource "aws_security_group" "ecs" {
 
 resource "aws_ecr_repository" "webapp" {
   name = "webapp"
+  force_delete = true #Added following error on TF destroy
 }
 
 ###################
