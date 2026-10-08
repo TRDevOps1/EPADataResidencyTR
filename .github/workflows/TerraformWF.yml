@@ -1,57 +1,95 @@
 name: Terraform
- 
+
 on:
- workflow_dispatch: 
-  push:
-    branches:
-      - master
- 
+  workflow_dispatch:
+
+  #push:
+  #  branches:
+  #    - '**'
+
   pull_request:
- 
+
 permissions:
   id-token: write
   contents: read
- 
+
 jobs:
   terraform:
     runs-on: ubuntu-latest
- 
+
     defaults:
       run:
         working-directory: .
- 
+
+    env:
+      AWS_REGION: eu-central-2
+      ECR_REPOSITORY: webapp
+      ECS_CLUSTER: webapp-cluster
+      ECS_SERVICE: webapp
+
     steps:
+
       - name: Checkout
         uses: actions/checkout@v4
- 
-        #troubleshooting section can be removed once working
-      - name: Debug OIDC claims
-        run: |
-              curl -s -H "Authorization: bearer $ACTIONS_ID_TOKEN_REQUEST_TOKEN" \
-              "$ACTIONS_ID_TOKEN_REQUEST_URL&audience=sts.amazonaws.com" | jq -R 'split(".") | .[1] | @base64d | fromjson'
 
       - name: Configure AWS Credentials
         uses: aws-actions/configure-aws-credentials@v4
         with:
           role-to-assume: ${{ secrets.AWS_ROLE_ARN }}
-          aws-region: eu-central-2
- 
+          aws-region: ${{ env.AWS_REGION }}
+
       - name: Setup Terraform
         uses: hashicorp/setup-terraform@v3
- 
+
       - name: Terraform Init
         run: terraform init
- 
-      - name: Terraform Format
-        run: terraform fmt #-check - caused error
- 
+
+      - name: Terraform Format Check
+        run: terraform fmt -check #-recursive
+
       - name: Terraform Validate
         run: terraform validate
- 
+
       - name: Terraform Plan
         run: terraform plan -out=tfplan
- 
+
+      # Only deploy for branch pushes/manual runs.
+      # Pull requests will stop after Terraform Plan.
       - name: Terraform Apply
-        if: github.ref == 'refs/heads/master'
+        if: github.event_name != 'pull_request'
         run: terraform apply -auto-approve tfplan
-       
+
+      - name: Login to Amazon ECR
+        if: github.event_name != 'pull_request'
+        id: login-ecr
+        uses: aws-actions/amazon-ecr-login@v2
+
+      - name: Build Docker Image
+        if: github.event_name != 'pull_request'
+        run: |
+          ACCOUNT_ID=$(aws sts get-caller-identity --query Account --output text)
+
+          docker build \
+            -t $ACCOUNT_ID.dkr.ecr.${AWS_REGION}.amazonaws.com/${ECR_REPOSITORY}:${{ github.sha }} \
+            -t $ACCOUNT_ID.dkr.ecr.${AWS_REGION}.amazonaws.com/${ECR_REPOSITORY}:latest \
+            ./docker
+
+      - name: Push Docker Image
+        if: github.event_name != 'pull_request'
+        run: |
+          ACCOUNT_ID=$(aws sts get-caller-identity --query Account --output text)
+
+          docker push \
+            $ACCOUNT_ID.dkr.ecr.${AWS_REGION}.amazonaws.com/${ECR_REPOSITORY}:${{ github.sha }}
+
+          docker push \
+            $ACCOUNT_ID.dkr.ecr.${AWS_REGION}.amazonaws.com/${ECR_REPOSITORY}:latest
+
+      - name: Force ECS Deployment
+        if: github.event_name != 'pull_request'
+        run: |
+          aws ecs update-service \
+            --cluster ${ECS_CLUSTER} \
+            --service ${ECS_SERVICE} \
+            --force-new-deployment \
+            --region ${AWS_REGION}
