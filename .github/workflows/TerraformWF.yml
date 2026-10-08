@@ -3,11 +3,13 @@ name: Terraform
 on:
   workflow_dispatch:
 
-  #push:
-  #  branches:
-  #    - '**'
+  push:
+    branches:
+      - '**'
 
   pull_request:
+    branches:
+      - master
 
 permissions:
   id-token: write
@@ -32,37 +34,48 @@ jobs:
       - name: Checkout
         uses: actions/checkout@v4
 
+
+      # AWS authentication is required for Terraform Plan
       - name: Configure AWS Credentials
         uses: aws-actions/configure-aws-credentials@v4
         with:
           role-to-assume: ${{ secrets.AWS_ROLE_ARN }}
           aws-region: ${{ env.AWS_REGION }}
 
+
       - name: Setup Terraform
         uses: hashicorp/setup-terraform@v3
+
 
       - name: Terraform Init
         run: terraform init
 
-      - name: Terraform Format Check
-        run: terraform fmt -check #-recursive
+
+      - name: Terraform Format
+        run: terraform fmt -check -recursive
+
 
       - name: Terraform Validate
         run: terraform validate
 
+
+      # PR workflow stops after this step
       - name: Terraform Plan
         run: terraform plan -out=tfplan
 
-      # Only deploy for branch pushes/manual runs.
-      # Pull requests will stop after Terraform Plan.
+
+      # Everything below here is skipped for PRs
+
       - name: Terraform Apply
         if: github.event_name != 'pull_request'
         run: terraform apply -auto-approve tfplan
+
 
       - name: Login to Amazon ECR
         if: github.event_name != 'pull_request'
         id: login-ecr
         uses: aws-actions/amazon-ecr-login@v2
+
 
       - name: Build Docker Image
         if: github.event_name != 'pull_request'
@@ -70,9 +83,9 @@ jobs:
           ACCOUNT_ID=$(aws sts get-caller-identity --query Account --output text)
 
           docker build \
-            -t $ACCOUNT_ID.dkr.ecr.${AWS_REGION}.amazonaws.com/${ECR_REPOSITORY}:${{ github.sha }} \
             -t $ACCOUNT_ID.dkr.ecr.${AWS_REGION}.amazonaws.com/${ECR_REPOSITORY}:latest \
             ./docker
+
 
       - name: Push Docker Image
         if: github.event_name != 'pull_request'
@@ -80,10 +93,8 @@ jobs:
           ACCOUNT_ID=$(aws sts get-caller-identity --query Account --output text)
 
           docker push \
-            $ACCOUNT_ID.dkr.ecr.${AWS_REGION}.amazonaws.com/${ECR_REPOSITORY}:${{ github.sha }}
-
-          docker push \
             $ACCOUNT_ID.dkr.ecr.${AWS_REGION}.amazonaws.com/${ECR_REPOSITORY}:latest
+
 
       - name: Force ECS Deployment
         if: github.event_name != 'pull_request'
