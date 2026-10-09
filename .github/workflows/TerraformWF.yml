@@ -5,7 +5,9 @@ on:
 
   push:
     branches:
-      - '**'
+      - test
+      - release
+      - master
 
   pull_request:
     branches:
@@ -15,70 +17,94 @@ permissions:
   id-token: write
   contents: read
 
+env:
+  AWS_REGION: eu-central-2
+  ECR_REPOSITORY: webapp
+  ECS_CLUSTER: webapp-cluster
+  ECS_SERVICE: webapp
+
 jobs:
-  terraform:
+
+  # ==========================================
+  # TERRAFORM PLAN
+  # ==========================================
+
+  terraform-plan:
     runs-on: ubuntu-latest
 
     defaults:
       run:
         working-directory: .
 
-    env:
-      AWS_REGION: eu-central-2
-      ECR_REPOSITORY: webapp
-      ECS_CLUSTER: webapp-cluster
-      ECS_SERVICE: webapp
-
     steps:
 
       - name: Checkout
         uses: actions/checkout@v4
 
-
-      # AWS authentication is required for Terraform Plan
       - name: Configure AWS Credentials
         uses: aws-actions/configure-aws-credentials@v4
         with:
           role-to-assume: ${{ secrets.AWS_ROLE_ARN }}
           aws-region: ${{ env.AWS_REGION }}
 
-
       - name: Setup Terraform
         uses: hashicorp/setup-terraform@v3
-
 
       - name: Terraform Init
         run: terraform init
 
-
       - name: Terraform Format
-        run: terraform fmt -check #-recursive
-
+        run: terraform fmt -check
 
       - name: Terraform Validate
         run: terraform validate
 
-
-      # PR workflow stops after this step
       - name: Terraform Plan
-        run: terraform plan -out=tfplan
+        run: terraform plan
 
 
-      # Everything below here is skipped for PRs
+  # ==========================================
+  # TEST / RELEASE DEPLOYMENTS
+  # No approval
+  # ==========================================
+
+  terraform-deploy:
+    needs: terraform-plan
+
+    if: >
+      github.event_name == 'push' &&
+      github.ref != 'refs/heads/master'
+
+    runs-on: ubuntu-latest
+
+    defaults:
+      run:
+        working-directory: .
+
+    steps:
+
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Configure AWS Credentials
+        uses: aws-actions/configure-aws-credentials@v4
+        with:
+          role-to-assume: ${{ secrets.AWS_ROLE_ARN }}
+          aws-region: ${{ env.AWS_REGION }}
+
+      - name: Setup Terraform
+        uses: hashicorp/setup-terraform@v3
+
+      - name: Terraform Init
+        run: terraform init
 
       - name: Terraform Apply
-        if: github.event_name != 'pull_request'
-        run: terraform apply -auto-approve tfplan
-
+        run: terraform apply -auto-approve
 
       - name: Login to Amazon ECR
-        if: github.event_name != 'pull_request'
-        id: login-ecr
         uses: aws-actions/amazon-ecr-login@v2
 
-
       - name: Build Docker Image
-        if: github.event_name != 'pull_request'
         run: |
           ACCOUNT_ID=$(aws sts get-caller-identity --query Account --output text)
 
@@ -86,18 +112,82 @@ jobs:
             -t $ACCOUNT_ID.dkr.ecr.${AWS_REGION}.amazonaws.com/${ECR_REPOSITORY}:latest \
             ./docker
 
-
       - name: Push Docker Image
-        if: github.event_name != 'pull_request'
         run: |
           ACCOUNT_ID=$(aws sts get-caller-identity --query Account --output text)
 
           docker push \
             $ACCOUNT_ID.dkr.ecr.${AWS_REGION}.amazonaws.com/${ECR_REPOSITORY}:latest
 
+      - name: Force ECS Deployment
+        run: |
+          aws ecs update-service \
+            --cluster ${ECS_CLUSTER} \
+            --service ${ECS_SERVICE} \
+            --force-new-deployment \
+            --region ${AWS_REGION}
+
+
+  # ==========================================
+  # MASTER DEPLOYMENT
+  # Approval required
+  # ==========================================
+
+  terraform-master-deploy:
+    needs: terraform-plan
+
+    if: >
+      github.event_name == 'push' &&
+      github.ref == 'refs/heads/master'
+
+    runs-on: ubuntu-latest
+
+    environment:
+      name: production
+
+    defaults:
+      run:
+        working-directory: .
+
+    steps:
+
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Configure AWS Credentials
+        uses: aws-actions/configure-aws-credentials@v4
+        with:
+          role-to-assume: ${{ secrets.AWS_ROLE_ARN }}
+          aws-region: ${{ env.AWS_REGION }}
+
+      - name: Setup Terraform
+        uses: hashicorp/setup-terraform@v3
+
+      - name: Terraform Init
+        run: terraform init
+
+      - name: Terraform Apply
+        run: terraform apply -auto-approve
+
+      - name: Login to Amazon ECR
+        uses: aws-actions/amazon-ecr-login@v2
+
+      - name: Build Docker Image
+        run: |
+          ACCOUNT_ID=$(aws sts get-caller-identity --query Account --output text)
+
+          docker build \
+            -t $ACCOUNT_ID.dkr.ecr.${AWS_REGION}.amazonaws.com/${ECR_REPOSITORY}:latest \
+            ./docker
+
+      - name: Push Docker Image
+        run: |
+          ACCOUNT_ID=$(aws sts get-caller-identity --query Account --output text)
+
+          docker push \
+            $ACCOUNT_ID.dkr.ecr.${AWS_REGION}.amazonaws.com/${ECR_REPOSITORY}:latest
 
       - name: Force ECS Deployment
-        if: github.event_name != 'pull_request'
         run: |
           aws ecs update-service \
             --cluster ${ECS_CLUSTER} \
