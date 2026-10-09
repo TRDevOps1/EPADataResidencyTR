@@ -39,33 +39,6 @@ jobs:
 
     steps:
 
-            # ======================================
-      # TEMPORARY OIDC TROUBLESHOOTING
-      # Remove once AWS trust is confirmed
-      # ======================================
-
-      - name: Display OIDC Claims
-        uses: actions/github-script@v7
-        with:
-          script: |
-            const token = await core.getIDToken('sts.amazonaws.com');
-
-            const payload = JSON.parse(
-              Buffer.from(
-                token.split('.')[1],
-                'base64url'
-              ).toString()
-            );
-
-            core.info(`aud: ${payload.aud}`);
-            core.info(`sub: ${payload.sub}`);
-            core.info(`repository: ${payload.repository}`);
-            core.info(`repository_owner: ${payload.repository_owner}`);
-            core.info(`repository_id: ${payload.repository_id}`);
-            core.info(`repository_owner_id: ${payload.repository_owner_id}`);
-            core.info(`ref: ${payload.ref}`);
-            core.info(`environment: ${payload.environment}`);
-
       - name: Checkout
         uses: actions/checkout@v4
 
@@ -183,6 +156,33 @@ jobs:
 
       - name: Checkout
         uses: actions/checkout@v4
+
+      # ======================================
+      # TEMPORARY OIDC TROUBLESHOOTING
+      # Remove once AWS trust is confirmed
+      # ======================================
+
+      - name: Display OIDC Claims
+        uses: actions/github-script@v7
+        with:
+          script: |
+            const token = await core.getIDToken('sts.amazonaws.com');
+
+            const payload = JSON.parse(
+              Buffer.from(
+                token.split('.')[1],
+                'base64url'
+              ).toString()
+            );
+
+            core.info(`aud: ${payload.aud}`);
+            core.info(`sub: ${payload.sub}`);
+            core.info(`repository: ${payload.repository}`);
+            core.info(`repository_owner: ${payload.repository_owner}`);
+            core.info(`repository_id: ${payload.repository_id}`);
+            core.info(`repository_owner_id: ${payload.repository_owner_id}`);
+            core.info(`ref: ${payload.ref}`);
+            core.info(`environment: ${payload.environment}`);
 
 
       # ======================================
