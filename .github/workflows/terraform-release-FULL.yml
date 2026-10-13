@@ -13,7 +13,6 @@ env:
   ECS_CLUSTER: webapp-cluster
   ECS_SERVICE: webapp
 
-
 jobs:
 
   # ==========================================
