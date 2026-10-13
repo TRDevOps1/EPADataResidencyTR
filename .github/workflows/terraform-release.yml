@@ -65,5 +65,8 @@ jobs:
       - name: Terraform Validate
         run: terraform validate
 
+      - name: Terraform Test
+        run: terraform test
+
       - name: Terraform Plan
         run: terraform plan -input=false -no-color
