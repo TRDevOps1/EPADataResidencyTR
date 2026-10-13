@@ -1,4 +1,4 @@
-name: Terraform - Master
+name: Terraform - Release - Full
 
 on:
   workflow_dispatch:
