@@ -4,40 +4,40 @@ data "aws_availability_zones" "available" {}
 # Networking
 ###################
 
-resource "aws_vpc" "main" {
-  cidr_block           = var.vpc_cidr
-  enable_dns_hostnames = true
-}
+#resource "aws_vpc" "main" {
+#  cidr_block           = var.vpc_cidr
+#  enable_dns_hostnames = true
+#}
 
-resource "aws_internet_gateway" "igw" {
-  vpc_id = aws_vpc.main.id
-}
+#resource "aws_internet_gateway" "igw" {
+#  vpc_id = aws_vpc.main.id
+#}
 
-resource "aws_subnet" "public" {
-  count = 2
+#resource "aws_subnet" "public" {
+#  count = 2
 
-  vpc_id                  = aws_vpc.main.id
-  cidr_block              = cidrsubnet(var.vpc_cidr, 8, count.index)
-  availability_zone       = data.aws_availability_zones.available.names[count.index]
-  map_public_ip_on_launch = true
-}
+#  vpc_id                  = aws_vpc.main.id
+#  cidr_block              = cidrsubnet(var.vpc_cidr, 8, count.index)
+#  availability_zone       = data.aws_availability_zones.available.names[count.index]
+#  map_public_ip_on_launch = true
+#}
 
-resource "aws_route_table" "public" {
-  vpc_id = aws_vpc.main.id
-}
+#resource "aws_route_table" "public" {
+#  vpc_id = aws_vpc.main.id
+#}
 
-resource "aws_route" "internet" {
-  route_table_id         = aws_route_table.public.id
-  destination_cidr_block = "0.0.0.0/0"
-  gateway_id             = aws_internet_gateway.igw.id
-}
+#resource "aws_route" "internet" {
+#  route_table_id         = aws_route_table.public.id
+#  destination_cidr_block = "0.0.0.0/0"
+#  gateway_id             = aws_internet_gateway.igw.id
+#}
 
-resource "aws_route_table_association" "public" {
-  count = 2
+#resource "aws_route_table_association" "public" {
+#  count = 2
 
-  subnet_id      = aws_subnet.public[count.index].id
-  route_table_id = aws_route_table.public.id
-}
+#  subnet_id      = aws_subnet.public[count.index].id
+#  route_table_id = aws_route_table.public.id
+#}
 
 ###################
 # Security Groups
@@ -45,7 +45,7 @@ resource "aws_route_table_association" "public" {
 
 resource "aws_security_group" "alb" {
   name   = "alb-sg"
-  vpc_id = aws_vpc.main.id
+  vpc_id = var.vpc_id
 
   ingress {
     from_port = 80
@@ -64,7 +64,7 @@ resource "aws_security_group" "alb" {
 
 resource "aws_security_group" "ecs" {
   name   = "ecs-sg"
-  vpc_id = aws_vpc.main.id
+  vpc_id = var.vpc_id
 
   ingress {
     from_port       = 80
@@ -148,7 +148,7 @@ resource "aws_lb" "web" {
   name               = "webapp-alb"
   load_balancer_type = "application"
   security_groups    = [aws_security_group.alb.id]
-  subnets            = aws_subnet.public[*].id
+  subnets            = var.public_subnet_ids
 }
 
 resource "aws_lb_target_group" "web" {
@@ -156,7 +156,7 @@ resource "aws_lb_target_group" "web" {
   port        = 80
   protocol    = "HTTP"
   target_type = "ip"
-  vpc_id      = aws_vpc.main.id
+  vpc_id      = var.vpc_id
 }
 
 resource "aws_lb_listener" "http" {
@@ -183,7 +183,7 @@ resource "aws_ecs_service" "webapp" {
   desired_count = 2
 
   network_configuration {
-    subnets          = aws_subnet.public[*].id
+    subnets          = var.public_subnet_ids
     security_groups  = [aws_security_group.ecs.id]
     assign_public_ip = true
   }

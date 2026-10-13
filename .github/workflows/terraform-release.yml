@@ -23,6 +23,7 @@ jobs:
   # Runs:
   #   - Terraform format check
   #   - Terraform validation
+  #   - Terraform test
   #   - Terraform plan
   #
   # Does not run:
@@ -39,11 +40,20 @@ jobs:
     name: Terraform Plan - ${{ github.ref_name }}
     runs-on: ubuntu-latest
 
+    # ------------------------------------------
+    # Terraform sensitive variables
+    # Values are supplied from GitHub Secrets
+    # ------------------------------------------
+    env:
+      TF_VAR_domain_administrator_password: ${{ secrets.DOMAIN_ADMINISTRATOR_PASSWORD }}
+      TF_VAR_fsx_service_account_password: ${{ secrets.FSX_SERVICE_ACCOUNT_PASSWORD }}
+
     defaults:
       run:
         working-directory: .
 
     steps:
+
       - name: Checkout
         uses: actions/checkout@v4
 
