@@ -2,8 +2,6 @@ name: Terraform - Release - Full
 
 on:
   workflow_dispatch:
-    branches:
-      - release
 
 permissions:
   id-token: write
