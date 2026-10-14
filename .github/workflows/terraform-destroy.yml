@@ -11,6 +11,9 @@ jobs:
   terraform-destroy:
     runs-on: ubuntu-latest
 
+    env:
+      TF_VAR_domain_administrator_password: ${{ secrets.DOMAIN_ADMINISTRATOR_PASSWORD }}
+
     steps:
       - name: Checkout
         uses: actions/checkout@v4
