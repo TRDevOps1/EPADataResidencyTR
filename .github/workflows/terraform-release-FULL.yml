@@ -1,0 +1,160 @@
+name: Terraform - Release - Full
+
+on:
+  workflow_dispatch:
+
+permissions:
+  id-token: write
+  contents: read
+
+env:
+  AWS_REGION: eu-central-2
+  ECR_REPOSITORY: webapp
+  ECS_CLUSTER: webapp-cluster
+  ECS_SERVICE: webapp
+
+jobs:
+
+  # ==========================================
+  # TERRAFORM PLAN
+  #
+  # PR to master:
+  #   Runs checks and Terraform plan only.
+  #
+  # Push/merge to master:
+  #   Runs checks and Terraform plan, then
+  #   allows the approved deployment job.
+  # ==========================================
+
+  terraform-plan:
+    name: Terraform Plan
+    runs-on: ubuntu-latest
+
+    # ------------------------------------------
+    # Terraform sensitive variables
+    # ------------------------------------------
+    env:
+      TF_VAR_domain_administrator_password: ${{ secrets.DOMAIN_ADMINISTRATOR_PASSWORD }}
+      TF_VAR_fsx_service_account_password: ${{ secrets.FSX_SERVICE_ACCOUNT_PASSWORD }}
+
+    defaults:
+      run:
+        working-directory: .
+
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Configure AWS Credentials
+        uses: aws-actions/configure-aws-credentials@v4
+        with:
+          role-to-assume: ${{ secrets.AWS_ROLE_ARN }}
+          aws-region: ${{ env.AWS_REGION }}
+
+      - name: Setup Terraform
+        uses: hashicorp/setup-terraform@v3
+
+      - name: Terraform Init
+        run: terraform init -input=false
+
+      - name: Terraform Format
+        run: terraform fmt -check
+
+      - name: Terraform Validate
+        run: terraform validate
+
+      - name: Terraform Plan
+        run: terraform plan -input=false -no-color
+
+
+  # ==========================================
+  # MASTER DEPLOYMENT
+  #
+  # Does not run for the PR.
+  #
+  # Runs only after:
+  #   - PR is merged into master, creating a
+  #     push event; or
+  #   - workflow is started manually while
+  #     master is selected.
+  #
+  # The production environment retains the
+  # existing approval requirement.
+  # ==========================================
+
+  terraform-master-deploy:
+    name: Approved Master Deployment
+    needs: terraform-plan
+
+    if: >
+      (github.event_name == 'push' &&
+       github.ref == 'refs/heads/master') ||
+      (github.event_name == 'workflow_dispatch' &&
+       github.ref == 'refs/heads/master')
+
+    runs-on: ubuntu-latest
+
+    environment:
+      name: production
+
+    # ------------------------------------------
+    # Terraform sensitive variables
+    # ------------------------------------------
+    env:
+      TF_VAR_domain_administrator_password: ${{ secrets.DOMAIN_ADMINISTRATOR_PASSWORD }}
+      TF_VAR_fsx_service_account_password: ${{ secrets.FSX_SERVICE_ACCOUNT_PASSWORD }}
+
+    defaults:
+      run:
+        working-directory: .
+
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      # This step takes place only after the
+      # production environment approval.
+      - name: Configure AWS Credentials
+        uses: aws-actions/configure-aws-credentials@v4
+        with:
+          role-to-assume: ${{ secrets.AWS_ROLE_ARN }}
+          aws-region: ${{ env.AWS_REGION }}
+
+      - name: Setup Terraform
+        uses: hashicorp/setup-terraform@v3
+
+      - name: Terraform Init
+        run: terraform init -input=false
+
+      - name: Terraform Apply
+        run: terraform apply -input=false -auto-approve
+
+      - name: Login to Amazon ECR
+        uses: aws-actions/amazon-ecr-login@v2
+
+      - name: Build Docker Image
+        run: |
+          ACCOUNT_ID=$(aws sts get-caller-identity \
+            --query Account \
+            --output text)
+
+          IMAGE_URI="${ACCOUNT_ID}.dkr.ecr.${AWS_REGION}.amazonaws.com/${ECR_REPOSITORY}:latest"
+
+          docker build \
+            -t "${IMAGE_URI}" \
+            ./docker
+
+      - name: Push Docker Image
+        run: |
+          ACCOUNT_ID=$(aws sts get-caller-identity \
+            --query Account \
+            --output text)
+
+          IMAGE_URI="${ACCOUNT_ID}.dkr.ecr.${AWS_REGION}.amazonaws.com/${ECR_REPOSITORY}:latest"
+
+          docker push "${IMAGE_URI}"
+
+      - name: Force ECS Deployment
+        run: |
+          aws ecs update-service \
+            --cluster "$

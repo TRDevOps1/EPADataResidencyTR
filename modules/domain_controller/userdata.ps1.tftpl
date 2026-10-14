@@ -1,0 +1,177 @@
+<powershell>
+$ErrorActionPreference = "Stop"
+
+$LogFile = "C:\ProgramData\Amazon\EC2-Windows\Launch\Log\DomainControllerBootstrap.log"
+$StageFile = "C:\ProgramData\DomainControllerBootstrapStage.txt"
+$CompletionFile = "C:\ProgramData\DomainControllerBootstrapComplete.txt"
+
+Start-Transcript -Path $LogFile -Append
+
+try {
+    if (Test-Path $CompletionFile) {
+        Write-Output "Domain controller bootstrap has already completed."
+        exit 0
+    }
+
+    if (-not (Test-Path $StageFile)) {
+        Write-Output "Starting Active Directory forest installation."
+
+        Rename-Computer -NewName "DC01" -Force
+
+        Install-WindowsFeature `
+            -Name AD-Domain-Services, DNS `
+            -IncludeManagementTools
+
+        $SafeModePassword = ConvertTo-SecureString `
+            "${domain_administrator_password}" `
+            -AsPlainText `
+            -Force
+
+        Set-Content `
+            -Path $StageFile `
+            -Value "ForestCreated"
+
+        Install-ADDSForest `
+            -DomainName "${domain_name}" `
+            -DomainNetbiosName "${domain_netbios_name}" `
+            -SafeModeAdministratorPassword $SafeModePassword `
+            -InstallDNS `
+            -CreateDnsDelegation:$false `
+            -DatabasePath "C:\Windows\NTDS" `
+            -LogPath "C:\Windows\NTDS" `
+            -SysvolPath "C:\Windows\SYSVOL" `
+            -NoRebootOnCompletion:$false `
+            -Force:$true
+
+        exit 0
+    }
+
+    $Stage = Get-Content -Path $StageFile
+
+    if ($Stage -eq "ForestCreated") {
+        Write-Output "Creating FSx OU and service account."
+
+        Import-Module ActiveDirectory
+
+        $DomainReady = $false
+
+        for ($Attempt = 1; $Attempt -le 30; $Attempt++) {
+            try {
+                Get-ADDomain -Identity "${domain_name}" | Out-Null
+                $DomainReady = $true
+                break
+            }
+            catch {
+                Write-Output "Active Directory is not ready. Attempt $Attempt of 30."
+                Start-Sleep -Seconds 20
+            }
+        }
+
+        if (-not $DomainReady) {
+            throw "Active Directory did not become ready."
+        }
+
+        $OuPath = "${fsx_ou_distinguished_name}"
+
+        try {
+            Get-ADOrganizationalUnit -Identity $OuPath | Out-Null
+            Write-Output "FSx OU already exists."
+        }
+        catch {
+            New-ADOrganizationalUnit `
+                -Name "FSx" `
+                -Path ($OuPath -replace "^OU=FSx,", "") `
+                -ProtectedFromAccidentalDeletion $true
+        }
+
+        $ServiceAccountName = "${fsx_service_account_name}"
+        $ServiceAccountPassword = ConvertTo-SecureString `
+            "${fsx_service_account_password}" `
+            -AsPlainText `
+            -Force
+
+        $ExistingServiceAccount = Get-ADUser `
+            -Filter "SamAccountName -eq '$ServiceAccountName'" `
+            -ErrorAction SilentlyContinue
+
+        if (-not $ExistingServiceAccount) {
+            New-ADUser `
+                -Name $ServiceAccountName `
+                -SamAccountName $ServiceAccountName `
+                -UserPrincipalName "$ServiceAccountName@${domain_name}" `
+                -AccountPassword $ServiceAccountPassword `
+                -Enabled $true `
+                -PasswordNeverExpires $false `
+                -CannotChangePassword $false
+
+            Write-Output "Created FSx service account."
+        }
+        else {
+            Set-ADAccountPassword `
+                -Identity $ServiceAccountName `
+                -Reset `
+                -NewPassword $ServiceAccountPassword
+
+            Enable-ADAccount -Identity $ServiceAccountName
+
+            Write-Output "Updated existing FSx service account."
+        }
+
+        # Delegate permissions over the FSx OU.
+        # FSx needs to create, update and remove its computer object.
+        $ServiceAccount = New-Object `
+            System.Security.Principal.NTAccount(
+                "${domain_netbios_name}",
+                $ServiceAccountName
+            )
+
+        $ServiceAccountSid = $ServiceAccount.Translate(
+            [System.Security.Principal.SecurityIdentifier]
+        )
+
+        $Ou = Get-ADOrganizationalUnit -Identity $OuPath
+        $OuEntry = "LDAP://" + $Ou.DistinguishedName
+        $Acl = $OuEntry.ObjectSecurity
+
+        $ActiveDirectoryRights = `
+            [System.DirectoryServices.ActiveDirectoryRights]::GenericAll
+
+        $AccessControlType = `
+            [System.Security.AccessControl.AccessControlType]::Allow
+
+        $InheritanceType = `
+            [System.DirectoryServices.ActiveDirectorySecurityInheritance]::All
+
+        $Rule = New-Object `
+            System.DirectoryServices.ActiveDirectoryAccessRule(
+                $ServiceAccountSid,
+                $ActiveDirectoryRights,
+                $AccessControlType,
+                $InheritanceType
+            )
+
+        $Acl.AddAccessRule($Rule)
+        $OuEntry.ObjectSecurity = $Acl
+        $OuEntry.CommitChanges()
+
+        Set-Content `
+            -Path $CompletionFile `
+            -Value "Completed"
+
+        Set-Content `
+            -Path $StageFile `
+            -Value "Completed"
+
+        Write-Output "Domain controller bootstrap completed."
+    }
+}
+catch {
+    Write-Error $_
+    throw
+}
+finally {
+    Stop-Transcript
+}
+</powershell>
+
+<persist>true</persist>

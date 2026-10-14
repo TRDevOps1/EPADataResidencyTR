@@ -21,6 +21,7 @@ env:
   ECS_CLUSTER: webapp-cluster
   ECS_SERVICE: webapp
 
+
 jobs:
 
   # ==========================================
@@ -37,6 +38,13 @@ jobs:
   terraform-plan:
     name: Terraform Plan
     runs-on: ubuntu-latest
+
+    # ------------------------------------------
+    # Terraform sensitive variables
+    # ------------------------------------------
+    env:
+      TF_VAR_domain_administrator_password: ${{ secrets.DOMAIN_ADMINISTRATOR_PASSWORD }}
+      TF_VAR_fsx_service_account_password: ${{ secrets.FSX_SERVICE_ACCOUNT_PASSWORD }}
 
     defaults:
       run:
@@ -98,6 +106,13 @@ jobs:
     environment:
       name: production
 
+    # ------------------------------------------
+    # Terraform sensitive variables
+    # ------------------------------------------
+    env:
+      TF_VAR_domain_administrator_password: ${{ secrets.DOMAIN_ADMINISTRATOR_PASSWORD }}
+      TF_VAR_fsx_service_account_password: ${{ secrets.FSX_SERVICE_ACCOUNT_PASSWORD }}
+
     defaults:
       run:
         working-directory: .
@@ -151,7 +166,4 @@ jobs:
       - name: Force ECS Deployment
         run: |
           aws ecs update-service \
-            --cluster "${ECS_CLUSTER}" \
-            --service "${ECS_SERVICE}" \
-            --force-new-deployment \
-            --region "${AWS_REGION}"
+            --cluster "$

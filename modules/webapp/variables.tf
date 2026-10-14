@@ -1,5 +1,9 @@
-variable "vpc_cidr" {
-  description = "VPC CIDR block"
+variable "vpc_id" {
+  description = "ID of the shared VPC"
   type        = string
-  default     = "10.0.0.0/16"
+}
+
+variable "public_subnet_ids" {
+  description = "Public subnet IDs used by the ALB and ECS service"
+  type        = list(string)
 }
