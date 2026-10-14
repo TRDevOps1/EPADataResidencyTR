@@ -13,6 +13,7 @@ jobs:
 
     env:
       TF_VAR_domain_administrator_password: ${{ secrets.DOMAIN_ADMINISTRATOR_PASSWORD }}
+      TF_VAR_fsx_service_account_password: ${{ secrets.FSX_SERVICE_ACCOUNT_PASSWORD }}
 
     steps:
       - name: Checkout
