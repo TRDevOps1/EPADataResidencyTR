@@ -354,6 +354,18 @@ resource "aws_instance" "domain_controller" {
   }
 }
 
+# Active Directory Web Services
+resource "aws_vpc_security_group_ingress_rule" "ad_web_services" {
+  security_group_id = aws_security_group.domain_controller.id
+
+  description = "Active Directory Web Services from VPC"
+  cidr_ipv4   = var.vpc_cidr
+
+  ip_protocol = "tcp"
+  from_port   = 9389
+  to_port     = 9389
+}
+
 ############################
 # Wait for Windows promotion
 ############################

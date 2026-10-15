@@ -1,39 +1,213 @@
 <powershell>
 $ErrorActionPreference = "Stop"
 
-$LogFile = "C:\ProgramData\Amazon\EC2-Windows\Launch\Log\DomainControllerBootstrap.log"
-$StageFile = "C:\ProgramData\DomainControllerBootstrapStage.txt"
-$CompletionFile = "C:\ProgramData\DomainControllerBootstrapComplete.txt"
+$LogDirectory   = "C:\ProgramData\DomainControllerBootstrap"
+$LogFile        = Join-Path $LogDirectory "DomainControllerBootstrap.log"
+$StageFile      = Join-Path $LogDirectory "Stage.txt"
+$CompletionFile = Join-Path $LogDirectory "Complete.txt"
+
+$TargetComputerName = "DC01"
+$DomainName         = "${domain_name}"
+$DomainNetbiosName  = "${domain_netbios_name}"
+$FsxOuPath          = "${fsx_ou_distinguished_name}"
+$ServiceAccountName = "${fsx_service_account_name}"
+
+New-Item `
+    -Path $LogDirectory `
+    -ItemType Directory `
+    -Force | Out-Null
 
 Start-Transcript -Path $LogFile -Append
 
+function Write-Log {
+    param(
+        [Parameter(Mandatory = $true)]
+        [string]$Message
+    )
+
+    $Timestamp = Get-Date -Format "yyyy-MM-dd HH:mm:ss"
+    Write-Output "[$Timestamp] $Message"
+}
+
+function Set-BootstrapStage {
+    param(
+        [Parameter(Mandatory = $true)]
+        [string]$Stage
+    )
+
+    Set-Content `
+        -Path $StageFile `
+        -Value $Stage `
+        -Force
+
+    Write-Log "Bootstrap stage set to: $Stage"
+}
+
+function Wait-ForActiveDirectory {
+    param(
+        [Parameter(Mandatory = $true)]
+        [string]$Domain,
+
+        [int]$MaximumAttempts = 60,
+        [int]$DelaySeconds = 20
+    )
+
+    Write-Log "Waiting for Active Directory domain $Domain."
+
+    for ($Attempt = 1; $Attempt -le $MaximumAttempts; $Attempt++) {
+        try {
+            Import-Module ActiveDirectory -ErrorAction Stop
+
+            $AdDomain = Get-ADDomain `
+                -Identity $Domain `
+                -ErrorAction Stop
+
+            $DnsService = Get-Service `
+                -Name "DNS" `
+                -ErrorAction Stop
+
+            $NtdsService = Get-Service `
+                -Name "NTDS" `
+                -ErrorAction Stop
+
+            if (
+                $DnsService.Status -eq "Running" -and
+                $NtdsService.Status -eq "Running"
+            ) {
+                Write-Log "Active Directory is available. Domain: $($AdDomain.DNSRoot)"
+                return
+            }
+
+            Write-Log (
+                "Attempt $Attempt of $MaximumAttempts. " +
+                "DNS status: $($DnsService.Status); " +
+                "NTDS status: $($NtdsService.Status)."
+            )
+        }
+        catch {
+            Write-Log (
+                "Attempt $Attempt of $MaximumAttempts failed: " +
+                $_.Exception.Message
+            )
+        }
+
+        Start-Sleep -Seconds $DelaySeconds
+    }
+
+    throw "Active Directory did not become ready after $MaximumAttempts attempts."
+}
+
+function Test-AdDnsRecords {
+    param(
+        [Parameter(Mandatory = $true)]
+        [string]$Domain
+    )
+
+    $SrvRecord = "_ldap._tcp.dc._msdcs.$Domain"
+
+    Write-Log "Checking Active Directory DNS record $SrvRecord."
+
+    $Result = Resolve-DnsName `
+        -Name $SrvRecord `
+        -Type SRV `
+        -DnsOnly `
+        -ErrorAction Stop
+
+    if (-not $Result) {
+        throw "No DNS SRV records were returned for $SrvRecord."
+    }
+
+    Write-Log "Active Directory DNS SRV record was resolved successfully."
+}
+
 try {
     if (Test-Path $CompletionFile) {
-        Write-Output "Domain controller bootstrap has already completed."
+        Write-Log "Domain controller bootstrap has already completed."
         exit 0
     }
 
-    if (-not (Test-Path $StageFile)) {
-        Write-Output "Starting Active Directory forest installation."
+    $CurrentStage = if (Test-Path $StageFile) {
+        (Get-Content -Path $StageFile -Raw).Trim()
+    }
+    else {
+        "Initial"
+    }
 
-        Rename-Computer -NewName "DC01" -Force
+    Write-Log "Current bootstrap stage: $CurrentStage"
+    Write-Log "Current computer name: $env:COMPUTERNAME"
 
-        Install-WindowsFeature `
-            -Name AD-Domain-Services, DNS `
-            -IncludeManagementTools
+    ###########################################################################
+    # Stage 1: Rename the server
+    ###########################################################################
+
+    if ($CurrentStage -eq "Initial") {
+        if ($env:COMPUTERNAME -ne $TargetComputerName) {
+            Write-Log (
+                "Renaming computer from $env:COMPUTERNAME " +
+                "to $TargetComputerName."
+            )
+
+            Set-BootstrapStage -Stage "ComputerRenamePending"
+
+            Rename-Computer `
+                -NewName $TargetComputerName `
+                -Force `
+                -ErrorAction Stop
+
+            Write-Log "Computer rename requested. Restarting."
+
+            Restart-Computer -Force
+            exit 0
+        }
+
+        Write-Log "Computer already has the required name."
+        Set-BootstrapStage -Stage "ComputerRenamed"
+        $CurrentStage = "ComputerRenamed"
+    }
+
+    if ($CurrentStage -eq "ComputerRenamePending") {
+        if ($env:COMPUTERNAME -ne $TargetComputerName) {
+            throw (
+                "Computer rename did not complete. " +
+                "Expected $TargetComputerName but found $env:COMPUTERNAME."
+            )
+        }
+
+        Write-Log "Computer rename completed successfully."
+        Set-BootstrapStage -Stage "ComputerRenamed"
+        $CurrentStage = "ComputerRenamed"
+    }
+
+    ###########################################################################
+    # Stage 2: Install AD DS and create the forest/domain
+    ###########################################################################
+
+    if ($CurrentStage -eq "ComputerRenamed") {
+        Write-Log "Installing Active Directory Domain Services and DNS."
+
+        $FeatureResult = Install-WindowsFeature `
+            -Name "AD-Domain-Services", "DNS" `
+            -IncludeManagementTools `
+            -ErrorAction Stop
+
+        if (-not $FeatureResult.Success) {
+            throw "AD DS or DNS Windows feature installation failed."
+        }
+
+        Write-Log "AD DS and DNS Windows features installed."
 
         $SafeModePassword = ConvertTo-SecureString `
             "${domain_administrator_password}" `
             -AsPlainText `
             -Force
 
-        Set-Content `
-            -Path $StageFile `
-            -Value "ForestCreated"
+        Set-BootstrapStage -Stage "ForestInstallationPending"
+
+        Write-Log "Creating Active Directory forest $DomainName."
 
         Install-ADDSForest `
-            -DomainName "${domain_name}" `
-            -DomainNetbiosName "${domain_netbios_name}" `
+            -DomainName $DomainName `
+            -DomainNetbiosName $DomainNetbiosName `
             -SafeModeAdministratorPassword $SafeModePassword `
             -InstallDNS `
             -CreateDnsDelegation:$false `
@@ -41,50 +215,64 @@ try {
             -LogPath "C:\Windows\NTDS" `
             -SysvolPath "C:\Windows\SYSVOL" `
             -NoRebootOnCompletion:$false `
-            -Force:$true
+            -Force:$true `
+            -ErrorAction Stop
 
         exit 0
     }
 
-    $Stage = Get-Content -Path $StageFile
+    ###########################################################################
+    # Stage 3: Validate the domain and configure FSx prerequisites
+    ###########################################################################
 
-    if ($Stage -eq "ForestCreated") {
-        Write-Output "Creating FSx OU and service account."
+    if ($CurrentStage -eq "ForestInstallationPending") {
+        Write-Log "Validating Active Directory forest installation."
 
-        Import-Module ActiveDirectory
+        Wait-ForActiveDirectory `
+            -Domain $DomainName `
+            -MaximumAttempts 60 `
+            -DelaySeconds 20
 
-        $DomainReady = $false
+        Test-AdDnsRecords -Domain $DomainName
 
-        for ($Attempt = 1; $Attempt -le 30; $Attempt++) {
-            try {
-                Get-ADDomain -Identity "${domain_name}" | Out-Null
-                $DomainReady = $true
-                break
-            }
-            catch {
-                Write-Output "Active Directory is not ready. Attempt $Attempt of 30."
-                Start-Sleep -Seconds 20
-            }
-        }
+        Set-BootstrapStage -Stage "DomainReady"
+        $CurrentStage = "DomainReady"
+    }
 
-        if (-not $DomainReady) {
-            throw "Active Directory did not become ready."
-        }
+    if ($CurrentStage -eq "DomainReady") {
+        Import-Module ActiveDirectory -ErrorAction Stop
 
-        $OuPath = "${fsx_ou_distinguished_name}"
+        #######################################################################
+        # Create the FSx OU
+        #######################################################################
 
-        try {
-            Get-ADOrganizationalUnit -Identity $OuPath | Out-Null
-            Write-Output "FSx OU already exists."
-        }
-        catch {
+        Write-Log "Checking FSx organisational unit: $FsxOuPath"
+
+        $ExistingOu = Get-ADOrganizationalUnit `
+            -Identity $FsxOuPath `
+            -ErrorAction SilentlyContinue
+
+        if (-not $ExistingOu) {
+            $ParentDistinguishedName = (
+                $FsxOuPath -replace "^OU=FSx,", ""
+            )
+
             New-ADOrganizationalUnit `
                 -Name "FSx" `
-                -Path ($OuPath -replace "^OU=FSx,", "") `
-                -ProtectedFromAccidentalDeletion $true
+                -Path $ParentDistinguishedName `
+                -ProtectedFromAccidentalDeletion $true `
+                -ErrorAction Stop
+
+            Write-Log "Created FSx organisational unit."
+        }
+        else {
+            Write-Log "FSx organisational unit already exists."
         }
 
-        $ServiceAccountName = "${fsx_service_account_name}"
+        #######################################################################
+        # Create or update the FSx service account
+        #######################################################################
+
         $ServiceAccountPassword = ConvertTo-SecureString `
             "${fsx_service_account_password}" `
             -AsPlainText `
@@ -95,33 +283,50 @@ try {
             -ErrorAction SilentlyContinue
 
         if (-not $ExistingServiceAccount) {
+            Write-Log "Creating FSx service account $ServiceAccountName."
+
             New-ADUser `
                 -Name $ServiceAccountName `
                 -SamAccountName $ServiceAccountName `
-                -UserPrincipalName "$ServiceAccountName@${domain_name}" `
+                -UserPrincipalName "$ServiceAccountName@$DomainName" `
                 -AccountPassword $ServiceAccountPassword `
                 -Enabled $true `
-                -PasswordNeverExpires $false `
-                -CannotChangePassword $false
+                -PasswordNeverExpires $true `
+                -CannotChangePassword $false `
+                -ErrorAction Stop
 
-            Write-Output "Created FSx service account."
+            Write-Log "FSx service account created."
         }
         else {
+            Write-Log "Updating FSx service account $ServiceAccountName."
+
             Set-ADAccountPassword `
-                -Identity $ServiceAccountName `
+                -Identity $ExistingServiceAccount `
                 -Reset `
-                -NewPassword $ServiceAccountPassword
+                -NewPassword $ServiceAccountPassword `
+                -ErrorAction Stop
 
-            Enable-ADAccount -Identity $ServiceAccountName
+            Enable-ADAccount `
+                -Identity $ExistingServiceAccount `
+                -ErrorAction Stop
 
-            Write-Output "Updated existing FSx service account."
+            Set-ADUser `
+                -Identity $ExistingServiceAccount `
+                -PasswordNeverExpires $true `
+                -ErrorAction Stop
+
+            Write-Log "FSx service account updated."
         }
 
-        # Delegate permissions over the FSx OU.
-        # FSx needs to create, update and remove its computer object.
+        #######################################################################
+        # Delegate control of the FSx OU
+        #######################################################################
+
+        Write-Log "Delegating control of the FSx OU."
+
         $ServiceAccount = New-Object `
             System.Security.Principal.NTAccount(
-                "${domain_netbios_name}",
+                $DomainNetbiosName,
                 $ServiceAccountName
             )
 
@@ -129,18 +334,28 @@ try {
             [System.Security.Principal.SecurityIdentifier]
         )
 
-        $Ou = Get-ADOrganizationalUnit -Identity $OuPath
-        $OuEntry = "LDAP://" + $Ou.DistinguishedName
+        $Ou = Get-ADOrganizationalUnit `
+            -Identity $FsxOuPath `
+            -ErrorAction Stop
+
+        $OuEntry = New-Object `
+            System.DirectoryServices.DirectoryEntry(
+                "LDAP://$($Ou.DistinguishedName)"
+            )
+
         $Acl = $OuEntry.ObjectSecurity
 
-        $ActiveDirectoryRights = `
+        $ActiveDirectoryRights = (
             [System.DirectoryServices.ActiveDirectoryRights]::GenericAll
+        )
 
-        $AccessControlType = `
+        $AccessControlType = (
             [System.Security.AccessControl.AccessControlType]::Allow
+        )
 
-        $InheritanceType = `
+        $InheritanceType = (
             [System.DirectoryServices.ActiveDirectorySecurityInheritance]::All
+        )
 
         $Rule = New-Object `
             System.DirectoryServices.ActiveDirectoryAccessRule(
@@ -151,26 +366,64 @@ try {
             )
 
         $Acl.AddAccessRule($Rule)
+
         $OuEntry.ObjectSecurity = $Acl
         $OuEntry.CommitChanges()
+        $OuEntry.Dispose()
+
+        Write-Log "FSx OU permissions delegated."
+
+        #######################################################################
+        # Final validation
+        #######################################################################
+
+        Get-ADDomain `
+            -Identity $DomainName `
+            -ErrorAction Stop | Out-Null
+
+        Get-ADOrganizationalUnit `
+            -Identity $FsxOuPath `
+            -ErrorAction Stop | Out-Null
+
+        Get-ADUser `
+            -Identity $ServiceAccountName `
+            -ErrorAction Stop | Out-Null
+
+        Test-AdDnsRecords -Domain $DomainName
 
         Set-Content `
             -Path $CompletionFile `
-            -Value "Completed"
+            -Value "Completed" `
+            -Force
 
-        Set-Content `
-            -Path $StageFile `
-            -Value "Completed"
+        Set-BootstrapStage -Stage "Completed"
 
-        Write-Output "Domain controller bootstrap completed."
+        Write-Log "Domain controller bootstrap completed successfully."
     }
 }
 catch {
-    Write-Error $_
+    $ErrorMessage = $_.Exception.Message
+    $ErrorDetails = $_ | Out-String
+
+    Write-Log "DOMAIN CONTROLLER BOOTSTRAP FAILED: $ErrorMessage"
+    Write-Output $ErrorDetails
+
+    $FailureFile = Join-Path $LogDirectory "Failure.txt"
+
+    Set-Content `
+        -Path $FailureFile `
+        -Value $ErrorDetails `
+        -Force
+
     throw
 }
 finally {
-    Stop-Transcript
+    try {
+        Stop-Transcript
+    }
+    catch {
+        Write-Output "Transcript was not running."
+    }
 }
 </powershell>
 
