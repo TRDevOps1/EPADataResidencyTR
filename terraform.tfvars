@@ -5,12 +5,10 @@ environment  = "poc"
 instance_count = 2
 instance_type  = "t3.micro"
 
-s3_bucket_name = "tr-terraform-test-150"
-
 vpc_cidr = "10.20.0.0/16"
 
-domain_name         = "corp.example.com"
-domain_netbios_name = "CORP"
+domain_name         = "aig.poc.com"
+domain_netbios_name = "aigp"
 
 fsx_service_account_name = "svc-fsx"
 

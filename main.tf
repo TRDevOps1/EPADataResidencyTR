@@ -5,12 +5,6 @@ module "compute" {
   instance_type  = var.instance_type
 }
 
-module "storage" {
-  source = "./modules/storage"
-
-  bucket_name = var.s3_bucket_name
-}
-
 module "webapp" {
   source = "./modules/webapp"
 

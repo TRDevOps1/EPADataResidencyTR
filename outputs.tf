@@ -13,16 +13,6 @@ output "app_server_private_ips" {
   value       = module.compute.private_ips
 }
 
-output "s3_bucket_name" {
-  description = "Name of the application S3 bucket"
-  value       = module.storage.bucket_name
-}
-
-output "s3_bucket_arn" {
-  description = "ARN of the application S3 bucket"
-  value       = module.storage.bucket_arn
-}
-
 output "website_url" {
   description = "Web application URL"
   value       = module.webapp.website_url
