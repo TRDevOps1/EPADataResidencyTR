@@ -136,36 +136,7 @@ jobs:
         run: terraform init -input=false
       
       - name: Terraform Apply
-        shell: bash
-        run: |
-          set +e
-
-            echo "========================================"
-            echo "Running Terraform Apply"
-            echo "========================================"
-
-            terraform apply \
-              -input=false \
-              -auto-approve \
-              -no-color 2>&1 | tee terraform-apply.log
-
-            EXIT_CODE=${PIPESTATUS[0]}
-
-            echo ""
-            echo "========================================"
-            echo "Terraform Apply exit code: $EXIT_CODE"
-            echo "========================================"
-
-            if [ "$EXIT_CODE" -ne 0 ]; then
-              echo ""
-              echo "Terraform Apply failed."
-              echo "Last 100 lines of Terraform output:"
-              echo "========================================"
-              tail -100 terraform-apply.log
-              exit "$EXIT_CODE"
-            fi
-
-            echo "Terraform Apply completed successfully."
+        run: terraform apply -input=false -auto-approve
 
       - name: Login to Amazon ECR
         uses: aws-actions/amazon-ecr-login@v2
