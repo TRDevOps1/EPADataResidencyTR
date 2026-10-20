@@ -1,4 +1,4 @@
-name: Terraform - Release - Full
+name: Terraform - troubleshoot
 
 on:
   workflow_dispatch:

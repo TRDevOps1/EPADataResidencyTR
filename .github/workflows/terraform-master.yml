@@ -135,6 +135,11 @@ jobs:
       - name: Terraform Init
         run: terraform init -input=false
 
+      - name: Import existing domain join secret
+        run: | 
+          terraform import aws_secretsmanager_secret.domain_join windows-fsx-poc-poc-domain-join
+        
+
       - name: Terraform Apply
         run: terraform apply -input=false -auto-approve
 
