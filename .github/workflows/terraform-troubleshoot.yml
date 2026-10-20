@@ -46,7 +46,7 @@ jobs:
 
       # ------------------------------------------
       # AWS/OIDC troubleshooting
-      # Confirms which AWS identity is being used
+      # Confirm which AWS identity is being used
       # ------------------------------------------
       - name: Check AWS Identity
         run: |
