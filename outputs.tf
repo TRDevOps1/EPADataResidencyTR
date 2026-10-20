@@ -1,28 +1,4 @@
 ###############################################################################
-# Compute
-###############################################################################
-
-output "ubuntu_instance_id" {
-  description = "EC2 instance ID of the Ubuntu application server"
-  value       = module.compute.ubuntu_instance_id
-}
-
-output "ubuntu_private_ip" {
-  description = "Private IP address of the Ubuntu application server"
-  value       = module.compute.ubuntu_private_ip
-}
-
-output "windows_member_instance_id" {
-  description = "EC2 instance ID of the Windows domain member server"
-  value       = module.compute.windows_member_instance_id
-}
-
-output "windows_member_private_ip" {
-  description = "Private IP address of the Windows domain member server"
-  value       = module.compute.windows_member_private_ip
-}
-
-###############################################################################
 # Web Application
 ###############################################################################
 
