@@ -1,17 +1,30 @@
-output "app_server_instance_ids" {
-  description = "IDs of the application EC2 instances"
-  value       = module.compute.instance_ids
+###############################################################################
+# Compute
+###############################################################################
+
+output "ubuntu_instance_id" {
+  description = "EC2 instance ID of the Ubuntu application server"
+  value       = module.compute.ubuntu_instance_id
 }
 
-output "app_server_public_ips" {
-  description = "Public IP addresses of the application EC2 instances"
-  value       = module.compute.public_ips
+output "ubuntu_private_ip" {
+  description = "Private IP address of the Ubuntu application server"
+  value       = module.compute.ubuntu_private_ip
 }
 
-output "app_server_private_ips" {
-  description = "Private IP addresses of the application EC2 instances"
-  value       = module.compute.private_ips
+output "windows_member_instance_id" {
+  description = "EC2 instance ID of the Windows domain member server"
+  value       = module.compute.windows_member_instance_id
 }
+
+output "windows_member_private_ip" {
+  description = "Private IP address of the Windows domain member server"
+  value       = module.compute.windows_member_private_ip
+}
+
+###############################################################################
+# Web Application
+###############################################################################
 
 output "website_url" {
   description = "Web application URL"
@@ -22,6 +35,10 @@ output "website_dns_name" {
   description = "Application Load Balancer DNS name"
   value       = module.webapp.dns_name
 }
+
+###############################################################################
+# Network
+###############################################################################
 
 output "vpc_id" {
   description = "ID of the shared VPC"
@@ -38,6 +55,10 @@ output "private_subnet_ids" {
   value       = module.network.private_subnet_ids
 }
 
+###############################################################################
+# Active Directory Domain Controller
+###############################################################################
+
 output "domain_controller_instance_id" {
   description = "EC2 instance ID of the domain controller"
   value       = module.domain_controller.instance_id
@@ -47,6 +68,10 @@ output "domain_controller_private_ip" {
   description = "Private IP address of the domain controller and DNS server"
   value       = module.domain_controller.private_ip
 }
+
+###############################################################################
+# Amazon FSx for Windows File Server
+###############################################################################
 
 output "fsx_id" {
   description = "Amazon FSx file-system ID"
