@@ -4,44 +4,48 @@ $ErrorActionPreference = "Stop"
 
 $LogDirectory = "C:\ProgramData\Bootstrap"
 $LogFile = "$LogDirectory\windows-member-bootstrap.log"
-$CompleteFile = "$LogDirectory\domain-join-complete.txt"
+$FailureFile = "$LogDirectory\domain-join-failed.txt"
+$StartedFile = "$LogDirectory\domain-join-started.txt"
 
-New-Item -Path $LogDirectory -ItemType Directory -Force | Out-Null
+New-Item `
+    -Path $LogDirectory `
+    -ItemType Directory `
+    -Force | Out-Null
 
 Start-Transcript -Path $LogFile -Append
 
 try {
-    Write-Output "Starting Windows member server configuration"
+    Write-Output "Starting Windows member-server configuration"
 
     ###########################################################################
-    # Wait for the AWS Tools PowerShell module
+    # Make sure the AWS PowerShell module is available
     ###########################################################################
 
-    $MaximumAttempts = 30
-    $Attempt = 0
+    $ModuleLoaded = $false
 
-    while ($Attempt -lt $MaximumAttempts) {
+    for ($Attempt = 1; $Attempt -le 30; $Attempt++) {
         try {
             Import-Module AWSPowerShell -ErrorAction Stop
+
+            $ModuleLoaded = $true
+
             Write-Output "AWSPowerShell module loaded"
             break
         }
         catch {
-            $Attempt++
-
             Write-Output `
-                "AWSPowerShell module not available. Attempt $Attempt of $MaximumAttempts"
+                "Waiting for AWSPowerShell module. Attempt $Attempt of 30"
 
             Start-Sleep -Seconds 10
         }
     }
 
-    if ($Attempt -ge $MaximumAttempts) {
-        throw "AWSPowerShell module could not be loaded"
+    if (-not $ModuleLoaded) {
+        throw "The AWSPowerShell module could not be loaded"
     }
 
     ###########################################################################
-    # Configure the domain controllers as DNS servers
+    # Identify the active network adapter
     ###########################################################################
 
     $NetworkAdapter = Get-NetAdapter |
@@ -52,10 +56,14 @@ try {
         Select-Object -First 1
 
     if (-not $NetworkAdapter) {
-        throw "No active network adapter found"
+        throw "No active network adapter was found"
     }
 
-    Write-Output "Configuring domain controller DNS servers"
+    ###########################################################################
+    # Point Windows DNS at the self-managed domain controller
+    ###########################################################################
+
+    Write-Output "Configuring Active Directory DNS servers"
 
     Set-DnsClientServerAddress `
         -InterfaceIndex $NetworkAdapter.ifIndex `
@@ -66,8 +74,14 @@ try {
 
     Clear-DnsClientCache
 
+    Write-Output "Configured DNS servers:"
+
+    Get-DnsClientServerAddress `
+        -InterfaceIndex $NetworkAdapter.ifIndex |
+        Format-List
+
     ###########################################################################
-    # Wait for Active Directory DNS
+    # Wait for Active Directory DNS to become available
     ###########################################################################
 
     $DomainAvailable = $false
@@ -80,7 +94,8 @@ try {
                 -ErrorAction Stop
 
             $DomainAvailable = $true
-            Write-Output "Active Directory DNS is available"
+
+            Write-Output "Active Directory DNS records are available"
             break
         }
         catch {
@@ -92,32 +107,32 @@ try {
     }
 
     if (-not $DomainAvailable) {
-        throw "Unable to resolve Active Directory DNS records"
+        throw "Unable to resolve the Active Directory DNS service record"
     }
 
     ###########################################################################
-    # Get the domain join credentials
+    # Retrieve the Domain Administrator credentials from Secrets Manager
     ###########################################################################
 
-    Write-Output "Retrieving domain join credentials from Secrets Manager"
+    Write-Output "Retrieving the domain-join secret"
 
     $SecretValue = Get-SECSecretValue `
         -SecretId "${domain_join_secret_arn}" `
         -Region "${aws_region}"
 
     if (-not $SecretValue.SecretString) {
-        throw "Domain join secret did not contain SecretString"
+        throw "The domain-join secret did not contain a SecretString value"
     }
 
     $DomainCredentials = $SecretValue.SecretString |
         ConvertFrom-Json
 
     if (-not $DomainCredentials.username) {
-        throw "Domain join secret does not contain username"
+        throw "The domain-join secret does not contain a username"
     }
 
     if (-not $DomainCredentials.password) {
-        throw "Domain join secret does not contain password"
+        throw "The domain-join secret does not contain a password"
     }
 
     $SecurePassword = ConvertTo-SecureString `
@@ -132,22 +147,27 @@ try {
         )
 
     ###########################################################################
-    # Rename the server and join the domain
+    # Check whether the server is already domain joined
     ###########################################################################
 
-    $CurrentComputerSystem = Get-CimInstance Win32_ComputerSystem
+    $ComputerSystem = Get-CimInstance Win32_ComputerSystem
 
-    if ($CurrentComputerSystem.PartOfDomain -and
-        $CurrentComputerSystem.Domain -ieq "${domain_name}") {
-
-        Write-Output "Server is already joined to ${domain_name}"
+    if (
+        $ComputerSystem.PartOfDomain -and
+        $ComputerSystem.Domain -ieq "${domain_name}"
+    ) {
+        Write-Output "The server is already joined to ${domain_name}"
 
         Set-Content `
-            -Path $CompleteFile `
-            -Value "Server already joined to ${domain_name}"
+            -Path "$LogDirectory\domain-join-complete.txt" `
+            -Value "The server is joined to ${domain_name}"
 
         exit 0
     }
+
+    ###########################################################################
+    # Join the domain
+    ###########################################################################
 
     $AddComputerParameters = @{
         DomainName = "${domain_name}"
@@ -163,20 +183,23 @@ try {
     }
 
     Write-Output `
-        "Renaming server to ${computer_name} and joining ${domain_name}"
+        "Joining ${computer_name} to the ${domain_name} domain"
 
     Set-Content `
-        -Path $CompleteFile `
-        -Value "Domain join initiated for ${computer_name}"
+        -Path $StartedFile `
+        -Value "Domain join started for ${computer_name}"
 
     Add-Computer @AddComputerParameters
 }
 catch {
-    Write-Error "Windows member server configuration failed: $($_.Exception.Message)"
+    $ErrorDetails = $_.Exception.ToString()
+
+    Write-Error `
+        "Windows member-server configuration failed: $ErrorDetails"
 
     Set-Content `
-        -Path "$LogDirectory\domain-join-failed.txt" `
-        -Value $_.Exception.ToString()
+        -Path $FailureFile `
+        -Value $ErrorDetails
 
     exit 1
 }

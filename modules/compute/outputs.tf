@@ -1,20 +1,20 @@
 output "ubuntu_instance_id" {
-  description = "Ubuntu EC2 instance ID"
+  description = "Instance ID of the Ubuntu server"
   value       = aws_instance.ubuntu.id
 }
 
 output "ubuntu_private_ip" {
-  description = "Ubuntu private IP address"
+  description = "Private IP address of the Ubuntu server"
   value       = aws_instance.ubuntu.private_ip
 }
 
 output "windows_member_instance_id" {
-  description = "Windows member server EC2 instance ID"
+  description = "Instance ID of the Windows member server"
   value       = aws_instance.windows_member.id
 }
 
 output "windows_member_private_ip" {
-  description = "Windows member server private IP address"
+  description = "Private IP address of the Windows member server"
   value       = aws_instance.windows_member.private_ip
 }
 
