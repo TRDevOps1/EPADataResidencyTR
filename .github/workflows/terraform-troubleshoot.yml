@@ -17,13 +17,6 @@ jobs:
 
   # ==========================================
   # TERRAFORM PLAN
-  #
-  # PR to master:
-  #   Runs checks and Terraform plan only.
-  #
-  # Push/merge to master:
-  #   Runs checks and Terraform plan, then
-  #   allows the approved deployment job.
   # ==========================================
 
   terraform-plan:
@@ -51,32 +44,69 @@ jobs:
           role-to-assume: ${{ secrets.AWS_ROLE_ARN }}
           aws-region: ${{ env.AWS_REGION }}
 
+      # ------------------------------------------
+      # AWS/OIDC troubleshooting
+      # Confirms which AWS identity is being used
+      # ------------------------------------------
+      - name: Check AWS Identity
+        run: |
+          echo "Checking AWS identity..."
+          aws sts get-caller-identity
+
       - name: Setup Terraform
         uses: hashicorp/setup-terraform@v3
 
+      - name: Terraform Version
+        run: terraform version
+
       - name: Terraform Init
-        run: terraform init -input=false
+        run: terraform init -input=false -no-color
 
       - name: Terraform Format
         run: terraform fmt -check
 
       - name: Terraform Validate
-        run: terraform validate
+        run: terraform validate -no-color
 
+      # ------------------------------------------
+      # Terraform Plan with troubleshooting
+      # Captures stdout + stderr while preserving
+      # the actual Terraform exit code
+      # ------------------------------------------
       - name: Terraform Plan
-        run: terraform plan -input=false -no-color
+        shell: bash
+        run: |
+          set +e
+
+          echo "========================================"
+          echo "Running Terraform Plan"
+          echo "========================================"
+
+          terraform plan \
+            -input=false \
+            -no-color 2>&1 | tee terraform-plan.log
+
+          EXIT_CODE=${PIPESTATUS[0]}
+
+          echo ""
+          echo "========================================"
+          echo "Terraform Plan exit code: $EXIT_CODE"
+          echo "========================================"
+
+          if [ "$EXIT_CODE" -ne 0 ]; then
+            echo ""
+            echo "Terraform Plan failed."
+            echo "Last 100 lines of Terraform output:"
+            echo "========================================"
+            tail -100 terraform-plan.log
+            exit "$EXIT_CODE"
+          fi
+
+          echo "Terraform Plan completed successfully."
 
 
   # ==========================================
   # MASTER DEPLOYMENT
-  #
-  # Does not run for the PR.
-  #
-  # Runs only after:
-  #   - PR is merged into master, creating a
-  #     push event; or
-  #   - workflow is started manually while
-  #     master is selected.
   #
   # The production environment retains the
   # existing approval requirement.
@@ -120,44 +150,23 @@ jobs:
           role-to-assume: ${{ secrets.AWS_ROLE_ARN }}
           aws-region: ${{ env.AWS_REGION }}
 
+      # ------------------------------------------
+      # Confirm the OIDC role being used by the
+      # deployment job
+      # ------------------------------------------
+      - name: Check AWS Identity
+        run: |
+          echo "Checking AWS identity used for deployment..."
+          aws sts get-caller-identity
+
       - name: Setup Terraform
         uses: hashicorp/setup-terraform@v3
 
+      - name: Terraform Version
+        run: terraform version
+
       - name: Terraform Init
-        run: terraform init -input=false
+        run: terraform init -input=false -no-color
 
-      - name: Terraform Apply
-        run: terraform apply -input=false -auto-approve
-
-      - name: Login to Amazon ECR
-        uses: aws-actions/amazon-ecr-login@v2
-
-      - name: Build Docker Image
-        run: |
-          ACCOUNT_ID=$(aws sts get-caller-identity \
-            --query Account \
-            --output text)
-
-          IMAGE_URI="${ACCOUNT_ID}.dkr.ecr.${AWS_REGION}.amazonaws.com/${ECR_REPOSITORY}:latest"
-
-          docker build \
-            -t "${IMAGE_URI}" \
-            ./docker
-
-      - name: Push Docker Image
-        run: |
-          ACCOUNT_ID=$(aws sts get-caller-identity \
-            --query Account \
-            --output text)
-
-          IMAGE_URI="${ACCOUNT_ID}.dkr.ecr.${AWS_REGION}.amazonaws.com/${ECR_REPOSITORY}:latest"
-
-          docker push "${IMAGE_URI}"
-
-      - name: Force ECS Deployment
-        run: |
-          aws ecs update-service \
-            --cluster "$ECS_CLUSTER" \
-            --service "$ECS_SERVICE" \
-            --force-new-deployment \
-            --region "$AWS_REGION"
+      # ------------------------------------------
+ 
