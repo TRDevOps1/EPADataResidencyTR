@@ -13,6 +13,10 @@ output "dns_server_ips" {
   value = [
     aws_instance.domain_controller.private_ip
   ]
+
+  depends_on = [
+    time_sleep.wait_for_active_directory
+  ]
 }
 
 output "security_group_id" {
