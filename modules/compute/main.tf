@@ -17,10 +17,9 @@ resource "aws_instance" "windows" {
   ami           = data.aws_ami.windows.id
   instance_type = var.windows_instance_type
 
-  # Put it in another existing private subnet if available
-  subnet_id = length(var.private_subnet_ids) > 1
-    : var.private_subnet_ids[1]
-    : var.private_subnet_ids[0]
+  # Use the second private subnet if available,
+  # otherwise use the first
+  subnet_id = length(var.private_subnet_ids) > 1 ? var.private_subnet_ids[1] : var.private_subnet_ids[0]
 
   vpc_security_group_ids = [
     aws_security_group.windows.id
