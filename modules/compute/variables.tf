@@ -19,13 +19,13 @@ variable "private_subnet_ids" {
 }
 
 variable "ubuntu_instance_type" {
-  description = "EC2 instance type for Ubuntu"
+  description = "Instance type for Ubuntu"
   type        = string
   default     = "t3.micro"
 }
 
 variable "windows_instance_type" {
-  description = "EC2 instance type for Windows"
+  description = "Instance type for Windows"
   type        = string
   default     = "t3.micro"
 }
