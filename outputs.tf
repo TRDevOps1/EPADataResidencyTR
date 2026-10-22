@@ -63,3 +63,13 @@ output "fsx_windows_share_path" {
   description = "Default Windows UNC path for the FSx file share"
   value       = module.fsx.windows_share_path
 }
+
+output "ubuntu_private_ip" {
+  description = "Private IP address of the Ubuntu server"
+  value       = module.compute.ubuntu_private_ip
+}
+
+output "windows_private_ip" {
+  description = "Private IP address of the Windows server"
+  value       = module.compute.windows_private_ip
+}
