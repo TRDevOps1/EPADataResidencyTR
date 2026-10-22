@@ -293,6 +293,18 @@ resource "aws_vpc_security_group_egress_rule" "all" {
   ip_protocol = "-1"
 }
 
+# WinRM
+resource "aws_vpc_security_group_ingress_rule" "winrm" {
+  security_group_id = aws_security_group.domain_controller.id
+
+  description = "WinRM from VPC"
+  cidr_ipv4   = var.vpc_cidr
+
+  ip_protocol = "tcp"
+  from_port   = 5985
+  to_port     = 5985
+}
+
 ############################
 # Domain controller
 ############################
