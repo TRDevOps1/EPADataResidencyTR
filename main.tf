@@ -84,3 +84,17 @@ module "webapp" {
   vpc_id            = module.network.vpc_id
   public_subnet_ids = module.network.public_subnet_ids
 }
+
+module "compute" {
+  source = "./modules/compute"
+
+  project_name = var.project_name
+  environment  = var.environment
+
+  vpc_id = module.network.vpc_id
+
+  private_subnet_ids = module.network.private_subnet_ids
+
+  ubuntu_instance_type  = "t3.micro"
+  windows_instance_type = "t3.micro"
+}
