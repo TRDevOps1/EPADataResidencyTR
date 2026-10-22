@@ -5,6 +5,8 @@ $LogDirectory   = "C:\ProgramData\DomainControllerBootstrap"
 $LogFile        = Join-Path $LogDirectory "DomainControllerBootstrap.log"
 $StageFile      = Join-Path $LogDirectory "Stage.txt"
 $CompletionFile = Join-Path $LogDirectory "Complete.txt"
+$BootstrapTaskName = "DomainControllerBootstrapResume"
+$BootstrapScript   = "C:\ProgramData\DomainControllerBootstrap\ResumeBootstrap.ps1"
 
 $TargetComputerName = "DC01"
 $DomainName         = "${domain_name}"
@@ -135,6 +137,56 @@ try {
 
     Write-Log "Current bootstrap stage: $CurrentStage"
     Write-Log "Current computer name: $env:COMPUTERNAME"
+
+    if ($CurrentStage -ne "Initial") {
+    Write-Log "Post-reboot execution detected. Waiting for Windows to settle."
+    Start-Sleep -Seconds 30
+}
+
+###########################################################################
+# Configure post-reboot continuation
+###########################################################################
+
+if (-not (Test-Path $BootstrapScript)) {
+
+    Write-Log "Saving bootstrap script for post-reboot continuation."
+
+    $CurrentScript = $MyInvocation.MyCommand.Path
+
+    if (-not $CurrentScript) {
+        throw "Unable to determine the current bootstrap script path."
+    }
+
+    Copy-Item `
+        -Path $CurrentScript `
+        -Destination $BootstrapScript `
+        -Force
+
+    $TaskAction = New-ScheduledTaskAction `
+        -Execute "PowerShell.exe" `
+        -Argument (
+            "-NoProfile -ExecutionPolicy Bypass " +
+            "-File `"$BootstrapScript`""
+        )
+
+    $TaskTrigger = New-ScheduledTaskTrigger `
+        -AtStartup
+
+    $TaskPrincipal = New-ScheduledTaskPrincipal `
+        -UserId "SYSTEM" `
+        -LogonType ServiceAccount `
+        -RunLevel Highest
+
+    Register-ScheduledTask `
+        -TaskName $BootstrapTaskName `
+        -Action $TaskAction `
+        -Trigger $TaskTrigger `
+        -Principal $TaskPrincipal `
+        -Force | Out-Null
+
+    Write-Log "Post-reboot bootstrap task registered."
+}
+
 
     ###########################################################################
     # Stage 1: Rename the server
@@ -396,9 +448,21 @@ try {
             -Value "Completed" `
             -Force
 
-        Set-BootstrapStage -Stage "Completed"
+    Set-BootstrapStage -Stage "Completed"
 
         Write-Log "Domain controller bootstrap completed successfully."
+
+        try {
+            Unregister-ScheduledTask `
+                -TaskName $BootstrapTaskName `
+                -Confirm:$false `
+                -ErrorAction SilentlyContinue
+
+        Write-Log "Post-reboot bootstrap task removed."
+}
+catch {
+    Write-Log "Bootstrap task cleanup was not required."
+}
     }
 }
 catch {
@@ -426,5 +490,3 @@ finally {
     }
 }
 </powershell>
-
-<persist>true</persist>
