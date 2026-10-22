@@ -19,7 +19,7 @@ resource "aws_instance" "windows" {
 
   # Put it in another existing private subnet if available
   subnet_id = length(var.private_subnet_ids) > 1
-    ? var.private_subnet_ids[1]
+    : var.private_subnet_ids[1]
     : var.private_subnet_ids[0]
 
   vpc_security_group_ids = [
