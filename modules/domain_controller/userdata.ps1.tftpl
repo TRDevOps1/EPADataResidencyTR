@@ -1,10 +1,40 @@
 <powershell>
 $ErrorActionPreference = "Stop"
 
+###############################################################################
+# Bootstrap launcher
+#
+# User data runs once and:
+#   1. Writes the persistent bootstrap script locally.
+#   2. Registers a SYSTEM scheduled task that runs after every restart.
+#   3. Starts the bootstrap script immediately.
+#
+# The scheduled task removes itself after successful completion.
+###############################################################################
+
+$BootstrapDirectory = "C:\ProgramData\DomainControllerBootstrap"
+$BootstrapScript    = Join-Path $BootstrapDirectory "Bootstrap.ps1"
+$ScheduledTaskName  = "DomainControllerBootstrap"
+
+New-Item `
+    -Path $BootstrapDirectory `
+    -ItemType Directory `
+    -Force | Out-Null
+
+$BootstrapContent = @'
+$ErrorActionPreference = "Stop"
+
+###############################################################################
+# Configuration
+###############################################################################
+
 $LogDirectory   = "C:\ProgramData\DomainControllerBootstrap"
 $LogFile        = Join-Path $LogDirectory "DomainControllerBootstrap.log"
 $StageFile      = Join-Path $LogDirectory "Stage.txt"
 $CompletionFile = Join-Path $LogDirectory "Complete.txt"
+$FailureFile    = Join-Path $LogDirectory "Failure.txt"
+
+$ScheduledTaskName = "DomainControllerBootstrap"
 
 $TargetComputerName = "DC01"
 $DomainName         = "${domain_name}"
@@ -12,12 +42,28 @@ $DomainNetbiosName  = "${domain_netbios_name}"
 $FsxOuPath          = "${fsx_ou_distinguished_name}"
 $ServiceAccountName = "${fsx_service_account_name}"
 
+# Passwords are base64 encoded by Terraform so PowerShell-special characters
+# in the original passwords do not corrupt the generated script.
+$DomainAdministratorPassword = [System.Text.Encoding]::UTF8.GetString(
+    [System.Convert]::FromBase64String(
+        "${base64encode(domain_administrator_password)}"
+    )
+)
+
+$FsxServiceAccountPassword = [System.Text.Encoding]::UTF8.GetString(
+    [System.Convert]::FromBase64String(
+        "${base64encode(fsx_service_account_password)}"
+    )
+)
+
 New-Item `
     -Path $LogDirectory `
     -ItemType Directory `
     -Force | Out-Null
 
-Start-Transcript -Path $LogFile -Append
+###############################################################################
+# Logging and stage functions
+###############################################################################
 
 function Write-Log {
     param(
@@ -27,6 +73,14 @@ function Write-Log {
 
     $Timestamp = Get-Date -Format "yyyy-MM-dd HH:mm:ss"
     Write-Output "[$Timestamp] $Message"
+}
+
+function Get-BootstrapStage {
+    if (Test-Path $StageFile) {
+        return (Get-Content -Path $StageFile -Raw).Trim()
+    }
+
+    return "Initial"
 }
 
 function Set-BootstrapStage {
@@ -48,7 +102,8 @@ function Wait-ForActiveDirectory {
         [Parameter(Mandatory = $true)]
         [string]$Domain,
 
-        [int]$MaximumAttempts = 60,
+        [int]$MaximumAttempts = 90,
+
         [int]$DelaySeconds = 20
     )
 
@@ -62,26 +117,40 @@ function Wait-ForActiveDirectory {
                 -Identity $Domain `
                 -ErrorAction Stop
 
-            $DnsService = Get-Service `
-                -Name "DNS" `
-                -ErrorAction Stop
+            $RequiredServices = @(
+                "DNS",
+                "NTDS",
+                "Netlogon",
+                "KDC"
+            )
 
-            $NtdsService = Get-Service `
-                -Name "NTDS" `
-                -ErrorAction Stop
+            $UnavailableServices = @()
 
-            if (
-                $DnsService.Status -eq "Running" -and
-                $NtdsService.Status -eq "Running"
-            ) {
-                Write-Log "Active Directory is available. Domain: $($AdDomain.DNSRoot)"
+            foreach ($ServiceName in $RequiredServices) {
+                $Service = Get-Service `
+                    -Name $ServiceName `
+                    -ErrorAction Stop
+
+                if ($Service.Status -ne "Running") {
+                    $UnavailableServices += (
+                        "$ServiceName=$($Service.Status)"
+                    )
+                }
+            }
+
+            if ($UnavailableServices.Count -eq 0) {
+                Write-Log (
+                    "Active Directory is available. Domain: " +
+                    $AdDomain.DNSRoot
+                )
+
                 return
             }
 
             Write-Log (
                 "Attempt $Attempt of $MaximumAttempts. " +
-                "DNS status: $($DnsService.Status); " +
-                "NTDS status: $($NtdsService.Status)."
+                "Services not ready: " +
+                ($UnavailableServices -join ", ")
             )
         }
         catch {
@@ -94,7 +163,10 @@ function Wait-ForActiveDirectory {
         Start-Sleep -Seconds $DelaySeconds
     }
 
-    throw "Active Directory did not become ready after $MaximumAttempts attempts."
+    throw (
+        "Active Directory did not become ready after " +
+        "$MaximumAttempts attempts."
+    )
 }
 
 function Test-AdDnsRecords {
@@ -105,11 +177,23 @@ function Test-AdDnsRecords {
 
     $SrvRecord = "_ldap._tcp.dc._msdcs.$Domain"
 
-    Write-Log "Checking Active Directory DNS record $SrvRecord."
+    Write-Log "Registering Domain Controller DNS records."
+
+    ipconfig /registerdns | Out-Null
+
+    Restart-Service `
+        -Name "Netlogon" `
+        -Force `
+        -ErrorAction Stop
+
+    Start-Sleep -Seconds 10
+
+    Write-Log "Checking DNS SRV record $SrvRecord locally."
 
     $Result = Resolve-DnsName `
         -Name $SrvRecord `
         -Type SRV `
+        -Server "127.0.0.1" `
         -DnsOnly `
         -ErrorAction Stop
 
@@ -117,24 +201,106 @@ function Test-AdDnsRecords {
         throw "No DNS SRV records were returned for $SrvRecord."
     }
 
-    Write-Log "Active Directory DNS SRV record was resolved successfully."
+    Write-Log "Active Directory DNS SRV record resolved successfully."
 }
 
+function Test-RequiredServices {
+    $RequiredServices = @(
+        "DNS",
+        "NTDS",
+        "Netlogon",
+        "KDC"
+    )
+
+    foreach ($ServiceName in $RequiredServices) {
+        $Service = Get-Service `
+            -Name $ServiceName `
+            -ErrorAction Stop
+
+        if ($Service.Status -ne "Running") {
+            throw (
+                "Required service $ServiceName is not running. " +
+                "Current status: $($Service.Status)"
+            )
+        }
+
+        Write-Log (
+            "Required service $ServiceName is running."
+        )
+    }
+}
+
+function Complete-Bootstrap {
+    Set-Content `
+        -Path $CompletionFile `
+        -Value "Completed" `
+        -Force
+
+    Set-BootstrapStage -Stage "Completed"
+
+    if (Test-Path $FailureFile) {
+        Remove-Item `
+            -Path $FailureFile `
+            -Force `
+            -ErrorAction SilentlyContinue
+    }
+
+    Write-Log "Domain controller bootstrap completed successfully."
+
+    try {
+        Unregister-ScheduledTask `
+            -TaskName $ScheduledTaskName `
+            -Confirm:$false `
+            -ErrorAction Stop
+
+        Write-Log "Bootstrap scheduled task removed."
+    }
+    catch {
+        Write-Log (
+            "The bootstrap completed, but the scheduled task could not " +
+            "be removed: $($_.Exception.Message)"
+        )
+    }
+}
+
+###############################################################################
+# Bootstrap execution
+###############################################################################
+
 try {
+    Start-Transcript `
+        -Path $LogFile `
+        -Append `
+        -ErrorAction Stop
+
     if (Test-Path $CompletionFile) {
         Write-Log "Domain controller bootstrap has already completed."
+
+        try {
+            Unregister-ScheduledTask `
+                -TaskName $ScheduledTaskName `
+                -Confirm:$false `
+                -ErrorAction SilentlyContinue
+        }
+        catch {
+            Write-Log "Scheduled task cleanup was not required."
+        }
+
         exit 0
     }
 
-    $CurrentStage = if (Test-Path $StageFile) {
-        (Get-Content -Path $StageFile -Raw).Trim()
-    }
-    else {
-        "Initial"
-    }
+    $CurrentStage = Get-BootstrapStage
 
     Write-Log "Current bootstrap stage: $CurrentStage"
     Write-Log "Current computer name: $env:COMPUTERNAME"
+    Write-Log "Running as: $([System.Security.Principal.WindowsIdentity]::GetCurrent().Name)"
+
+    # After a restart, allow Windows services and networking to settle before
+    # continuing with the next stage.
+    if ($CurrentStage -ne "Initial") {
+        Write-Log "Post-restart execution detected. Waiting for Windows services."
+        Start-Sleep -Seconds 30
+    }
 
     ###########################################################################
     # Stage 1: Rename the server
@@ -161,6 +327,7 @@ try {
         }
 
         Write-Log "Computer already has the required name."
+
         Set-BootstrapStage -Stage "ComputerRenamed"
         $CurrentStage = "ComputerRenamed"
     }
@@ -168,18 +335,19 @@ try {
     if ($CurrentStage -eq "ComputerRenamePending") {
         if ($env:COMPUTERNAME -ne $TargetComputerName) {
             throw (
-                "Computer rename did not complete. " +
-                "Expected $TargetComputerName but found $env:COMPUTERNAME."
+                "Computer rename did not complete. Expected " +
+                "$TargetComputerName but found $env:COMPUTERNAME."
             )
         }
 
         Write-Log "Computer rename completed successfully."
+
         Set-BootstrapStage -Stage "ComputerRenamed"
         $CurrentStage = "ComputerRenamed"
     }
 
     ###########################################################################
-    # Stage 2: Install AD DS and create the forest/domain
+    # Stage 2: Install AD DS and create the forest
     ###########################################################################
 
     if ($CurrentStage -eq "ComputerRenamed") {
@@ -197,7 +365,7 @@ try {
         Write-Log "AD DS and DNS Windows features installed."
 
         $SafeModePassword = ConvertTo-SecureString `
-            "${domain_administrator_password}" `
+            $DomainAdministratorPassword `
             -AsPlainText `
             -Force
 
@@ -222,7 +390,7 @@ try {
     }
 
     ###########################################################################
-    # Stage 3: Validate the domain and configure FSx prerequisites
+    # Stage 3: Validate the forest after promotion
     ###########################################################################
 
     if ($CurrentStage -eq "ForestInstallationPending") {
@@ -230,27 +398,47 @@ try {
 
         Wait-ForActiveDirectory `
             -Domain $DomainName `
-            -MaximumAttempts 60 `
+            -MaximumAttempts 90 `
             -DelaySeconds 20
 
+        Test-RequiredServices
         Test-AdDnsRecords -Domain $DomainName
+
+        $DomainController = Get-ADDomainController `
+            -Discover `
+            -DomainName $DomainName `
+            -Writable `
+            -Service GlobalCatalog `
+            -ErrorAction Stop
+
+        Write-Log (
+            "Writable Global Catalog discovered: " +
+            $DomainController.HostName
+        )
 
         Set-BootstrapStage -Stage "DomainReady"
         $CurrentStage = "DomainReady"
     }
 
+    ###########################################################################
+    # Stage 4: Create the FSx OU and service account
+    ###########################################################################
+
     if ($CurrentStage -eq "DomainReady") {
         Import-Module ActiveDirectory -ErrorAction Stop
 
-        #######################################################################
-        # Create the FSx OU
-        #######################################################################
-
         Write-Log "Checking FSx organisational unit: $FsxOuPath"
 
-        $ExistingOu = Get-ADOrganizationalUnit `
-            -Filter "DistinguishedName -eq '$FsxOuPath'" `
-            -ErrorAction Stop
+        $ExistingOu = $null
+
+        try {
+            $ExistingOu = Get-ADOrganizationalUnit `
+                -Identity $FsxOuPath `
+                -ErrorAction Stop
+        }
+        catch [Microsoft.ActiveDirectory.Management.ADIdentityNotFoundException] {
+            $ExistingOu = $null
+        }
 
         if (-not $ExistingOu) {
             $ParentDistinguishedName = (
@@ -273,8 +461,8 @@ try {
         # Create or update the FSx service account
         #######################################################################
 
-        $ServiceAccountPassword = ConvertTo-SecureString `
-            "${fsx_service_account_password}" `
+        $SecureServiceAccountPassword = ConvertTo-SecureString `
+            $FsxServiceAccountPassword `
             -AsPlainText `
             -Force
 
@@ -289,7 +477,7 @@ try {
                 -Name $ServiceAccountName `
                 -SamAccountName $ServiceAccountName `
                 -UserPrincipalName "$ServiceAccountName@$DomainName" `
-                -AccountPassword $ServiceAccountPassword `
+                -AccountPassword $SecureServiceAccountPassword `
                 -Enabled $true `
                 -PasswordNeverExpires $true `
                 -CannotChangePassword $false `
@@ -303,7 +491,7 @@ try {
             Set-ADAccountPassword `
                 -Identity $ExistingServiceAccount `
                 -Reset `
-                -NewPassword $ServiceAccountPassword `
+                -NewPassword $SecureServiceAccountPassword `
                 -ErrorAction Stop
 
             Enable-ADAccount `
@@ -324,15 +512,12 @@ try {
 
         Write-Log "Delegating control of the FSx OU."
 
-        $ServiceAccount = New-Object `
-            System.Security.Principal.NTAccount(
-                $DomainNetbiosName,
-                $ServiceAccountName
-            )
+        # Reload the account in case it was just created.
+        $ExistingServiceAccount = Get-ADUser `
+            -Identity $ServiceAccountName `
+            -ErrorAction Stop
 
-        $ServiceAccountSid = $ServiceAccount.Translate(
-            [System.Security.Principal.SecurityIdentifier]
-        )
+        $ServiceAccountSid = $ExistingServiceAccount.SID
 
         $Ou = Get-ADOrganizationalUnit `
             -Identity $FsxOuPath `
@@ -343,39 +528,54 @@ try {
                 "LDAP://$($Ou.DistinguishedName)"
             )
 
-        $Acl = $OuEntry.ObjectSecurity
+        try {
+            $Acl = $OuEntry.ObjectSecurity
 
-        $ActiveDirectoryRights = (
-            [System.DirectoryServices.ActiveDirectoryRights]::GenericAll
-        )
-
-        $AccessControlType = (
-            [System.Security.AccessControl.AccessControlType]::Allow
-        )
-
-        $InheritanceType = (
-            [System.DirectoryServices.ActiveDirectorySecurityInheritance]::All
-        )
-
-        $Rule = New-Object `
-            System.DirectoryServices.ActiveDirectoryAccessRule(
-                $ServiceAccountSid,
-                $ActiveDirectoryRights,
-                $AccessControlType,
-                $InheritanceType
+            $ActiveDirectoryRights = (
+                [System.DirectoryServices.ActiveDirectoryRights]::GenericAll
             )
 
-        $Acl.AddAccessRule($Rule)
+            $AccessControlType = (
+                [System.Security.AccessControl.AccessControlType]::Allow
+            )
 
-        $OuEntry.ObjectSecurity = $Acl
-        $OuEntry.CommitChanges()
-        $OuEntry.Dispose()
+            $InheritanceType = (
+                [System.DirectoryServices.ActiveDirectorySecurityInheritance]::All
+            )
+
+            $Rule = New-Object `
+                System.DirectoryServices.ActiveDirectoryAccessRule(
+                    $ServiceAccountSid,
+                    $ActiveDirectoryRights,
+                    $AccessControlType,
+                    $InheritanceType
+                )
+
+            $Acl.AddAccessRule($Rule)
+
+            $OuEntry.ObjectSecurity = $Acl
+            $OuEntry.CommitChanges()
+        }
+        finally {
+            $OuEntry.Dispose()
+        }
 
         Write-Log "FSx OU permissions delegated."
 
-        #######################################################################
-        # Final validation
-        #######################################################################
+        Set-BootstrapStage -Stage "FsxConfigurationComplete"
+        $CurrentStage = "FsxConfigurationComplete"
+    }
+
+    ###########################################################################
+    # Stage 5: Final validation
+    ###########################################################################
+
+    if ($CurrentStage -eq "FsxConfigurationComplete") {
+        Write-Log "Performing final Active Directory validation."
+
+        Import-Module ActiveDirectory -ErrorAction Stop
+
+        Test-RequiredServices
 
         Get-ADDomain `
             -Identity $DomainName `
@@ -385,20 +585,30 @@ try {
             -Identity $FsxOuPath `
             -ErrorAction Stop | Out-Null
 
-        Get-ADUser `
+        $ValidatedServiceAccount = Get-ADUser `
             -Identity $ServiceAccountName `
-            -ErrorAction Stop | Out-Null
+            -Properties Enabled `
+            -ErrorAction Stop
+
+        if (-not $ValidatedServiceAccount.Enabled) {
+            throw "The FSx service account is not enabled."
+        }
 
         Test-AdDnsRecords -Domain $DomainName
 
-        Set-Content `
-            -Path $CompletionFile `
-            -Value "Completed" `
-            -Force
+        $DomainController = Get-ADDomainController `
+            -Discover `
+            -DomainName $DomainName `
+            -Writable `
+            -Service GlobalCatalog `
+            -ErrorAction Stop
 
-        Set-BootstrapStage -Stage "Completed"
+        Write-Log (
+            "Final validation located writable Global Catalog: " +
+            $DomainController.HostName
+        )
 
-        Write-Log "Domain controller bootstrap completed successfully."
+        Complete-Bootstrap
     }
 }
 catch {
@@ -407,8 +617,6 @@ catch {
 
     Write-Log "DOMAIN CONTROLLER BOOTSTRAP FAILED: $ErrorMessage"
     Write-Output $ErrorDetails
-
-    $FailureFile = Join-Path $LogDirectory "Failure.txt"
 
     Set-Content `
         -Path $FailureFile `
@@ -424,7 +632,66 @@ finally {
     catch {
         Write-Output "Transcript was not running."
     }
-}
-</powershell>
 
-<persist>true</persist>
+    # Remove plaintext password variables from the current PowerShell process.
+    $DomainAdministratorPassword = $null
+    $FsxServiceAccountPassword   = $null
+}
+'@
+
+Set-Content `
+    -Path $BootstrapScript `
+    -Value $BootstrapContent `
+    -Encoding UTF8 `
+    -Force
+
+###############################################################################
+# Register continuation task
+###############################################################################
+
+$TaskAction = New-ScheduledTaskAction `
+    -Execute "PowerShell.exe" `
+    -Argument (
+        '-NoProfile -NonInteractive -ExecutionPolicy Bypass ' +
+        '-File "C:\ProgramData\DomainControllerBootstrap\Bootstrap.ps1"'
+    )
+
+$TaskTrigger = New-ScheduledTaskTrigger -AtStartup
+
+$TaskPrincipal = New-ScheduledTaskPrincipal `
+    -UserId "SYSTEM" `
+    -LogonType ServiceAccount `
+    -RunLevel Highest
+
+$TaskSettings = New-ScheduledTaskSettingsSet `
+    -StartWhenAvailable `
+    -ExecutionTimeLimit (New-TimeSpan -Hours 2) `
+    -MultipleInstances IgnoreNew `
+    -RestartCount 3 `
+    -RestartInterval (New-TimeSpan -Minutes 1)
+
+Register-ScheduledTask `
+    -TaskName $ScheduledTaskName `
+    -Action $TaskAction `
+    -Trigger $TaskTrigger `
+    -Principal $TaskPrincipal `
+    -Settings $TaskSettings `
+    -Description "Continues the staged Active Directory bootstrap after restarts." `
+    -Force | Out-Null
+
+###############################################################################
+# Start first execution immediately
+###############################################################################
+
+Start-Process `
+    -FilePath "PowerShell.exe" `
+    -ArgumentList @(
+        "-NoProfile",
+        "-NonInteractive",
+        "-ExecutionPolicy",
+        "Bypass",
+        "-File",
+        "`"$BootstrapScript`""
+    ) `
+    -WindowStyle Hidden
+</powershell>
