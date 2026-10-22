@@ -1,29 +1,31 @@
-data "aws_ami" "ubuntu" {
-  most_recent = true
-  owners      = ["099720109477"]
-
-  filter {
-    name   = "name"
-    values = ["ubuntu/images/hvm-ssd-gp3/ubuntu-noble-24.04-amd64-server-*"]
-  }
-
-  filter {
-    name   = "virtualization-type"
-    values = ["hvm"]
-  }
+variable "project_name" {
+  description = "Name of the project"
+  type        = string
 }
 
-data "aws_ami" "windows" {
-  most_recent = true
-  owners      = ["amazon"]
+variable "environment" {
+  description = "Environment name"
+  type        = string
+}
 
-  filter {
-    name   = "name"
-    values = ["Windows_Server-2025-English-Full-Base-*"]
-  }
+variable "vpc_id" {
+  description = "ID of the VPC"
+  type        = string
+}
 
-  filter {
-    name   = "state"
-    values = ["available"]
-  }
+variable "private_subnet_ids" {
+  description = "IDs of the existing private subnets"
+  type        = list(string)
+}
+
+variable "ubuntu_instance_type" {
+  description = "EC2 instance type for Ubuntu"
+  type        = string
+  default     = "t3.micro"
+}
+
+variable "windows_instance_type" {
+  description = "EC2 instance type for Windows"
+  type        = string
+  default     = "t3.micro"
 }
