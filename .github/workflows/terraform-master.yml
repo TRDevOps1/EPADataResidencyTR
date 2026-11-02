@@ -72,6 +72,12 @@ jobs:
       - name: Terraform Validate
         run: terraform validate
 
+      - name: Terraform Test - Webapp
+        working-directory: ./modules/webapp
+        run: |
+          terraform init -backend=false
+          terraform test
+
       - name: Terraform Plan
         run: terraform plan -input=false -no-color
 
