@@ -1,9 +1,9 @@
 aws_region   = "eu-central-2"
-project_name = "windows-fsx-poc"
+project_name = "swiss-ds"
 environment  = "poc"
 
-instance_count = 2
-instance_type  = "t3.micro"
+#instance_count = 2
+#instance_type  = "t3.micro"
 
 vpc_cidr = "10.20.0.0/16"
 

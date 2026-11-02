@@ -1,23 +1,23 @@
 variable "aws_region" {
   description = "AWS region where resources will be deployed"
   type        = string
-  default     = "eu-west-2"
+  #default     = "eu-west-2"
 }
 
-variable "instance_count" {
-  description = "Number of application EC2 instances"
-  type        = number
-}
+#variable "instance_count" {
+#  description = "Number of application EC2 instances"
+#  type        = number
+#}
 
-variable "instance_type" {
-  description = "EC2 instance type"
-  type        = string
-}
+#variable "instance_type" {
+#  description = "EC2 instance type"
+#  type        = string
+#}
 
 variable "project_name" {
   description = "Project name used in resource naming"
   type        = string
-  default     = "swiss-ds"
+  #default     = "swiss-ds"
 }
 
 variable "environment" {
