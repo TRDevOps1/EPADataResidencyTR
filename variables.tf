@@ -17,7 +17,7 @@ variable "instance_type" {
 variable "project_name" {
   description = "Project name used in resource naming"
   type        = string
-  default     = "windows-fsx-poc"
+  default     = "swiss-ds"
 }
 
 variable "environment" {
@@ -35,7 +35,7 @@ variable "vpc_cidr" {
 variable "domain_name" {
   description = "Fully qualified Active Directory domain name"
   type        = string
-  default     = "corp.example.com"
+  default     = "aig.poc.com"
 }
 
 variable "domain_netbios_name" {
