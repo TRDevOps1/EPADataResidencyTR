@@ -88,13 +88,7 @@ jobs:
   # Does not run for the PR.
   #
   # Runs only after:
-  #   - PR is merged into master, creating a
-  #     push event; or
-  #   - workflow is started manually while
-  #     master is selected.
-  #
-  # The production environment retains the
-  # existing approval requirement.
+  #   - PR is merged into master
   # ==========================================
 
   terraform-master-deploy:
@@ -112,9 +106,6 @@ jobs:
     environment:
       name: production
 
-    # ------------------------------------------
-    # Terraform sensitive variables
-    # ------------------------------------------
     env:
       TF_VAR_domain_administrator_password: ${{ secrets.DOMAIN_ADMINISTRATOR_PASSWORD }}
       TF_VAR_fsx_service_account_password: ${{ secrets.FSX_SERVICE_ACCOUNT_PASSWORD }}
@@ -127,8 +118,11 @@ jobs:
       - name: Checkout
         uses: actions/checkout@v4
 
-      # This step takes place only after the
-      # production environment approval.
+    # ==========================================
+    # This step takes place only after the
+    # production environment approval.
+    # ==========================================
+    
       - name: Configure AWS Credentials
         uses: aws-actions/configure-aws-credentials@v4
         with:
