@@ -17,7 +17,7 @@ terraform {
       version = "~> 0.13"
     }
 
-      archive = {
+    archive = {
       source  = "hashicorp/archive"
       version = "~> 2.7"
     }
