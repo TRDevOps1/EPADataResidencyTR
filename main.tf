@@ -100,15 +100,14 @@ module "compute" {
 }
 
 module "monitoring" {
-
   source = "./modules/monitoring"
 
   project_name = var.project_name
   environment  = var.environment
 
   domain_controller_instance_id = module.domain_controller.instance_id
+  windows_instance_id           = module.compute.windows_instance_id
+  ubuntu_instance_id            = module.compute.ubuntu_instance_id
 
-  windows_instance_id = module.compute.windows_instance_id
-
-  ubuntu_instance_id = module.compute.ubuntu_instance_id
+  webpage_url = module.webapp.website_url
 }
