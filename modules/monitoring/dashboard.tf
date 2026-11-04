@@ -1,5 +1,3 @@
-data "aws_region" "current" {}
-
 resource "aws_cloudwatch_dashboard" "infrastructure" {
 
   dashboard_name = "${var.project_name}-${var.environment}-infrastructure"
