@@ -24,24 +24,26 @@ env:
 
 jobs:
 
-  # ==========================================
-  # TERRAFORM PLAN
-  #
-  # PR to master:
-  #   Runs checks and Terraform plan only.
-  #
-  # Push/merge to master:
-  #   Runs checks and Terraform plan, then
-  #   allows the approved deployment job.
-  # ==========================================
+    # ------------------------------------------
+    # TERRAFORM PLAN
+    #
+    # PR to master:
+    #   Runs checks and Terraform plan only.
+    #
+    # Push/merge to master:
+    #   Runs checks and Terraform plan, then
+    #   allows the approved deployment job.
+    # ------------------------------------------
 
   terraform-plan:
     name: Terraform Plan
     runs-on: ubuntu-latest
 
     # ------------------------------------------
-    # Terraform sensitive variables
-    # ------------------------------------------
+    # Retrieves passwords for Domain and FSX
+    # TF then uses these variables
+    # -----------------------------------------
+
     env:
       TF_VAR_domain_administrator_password: ${{ secrets.DOMAIN_ADMINISTRATOR_PASSWORD }}
       TF_VAR_fsx_service_account_password: ${{ secrets.FSX_SERVICE_ACCOUNT_PASSWORD }}
@@ -53,6 +55,17 @@ jobs:
     steps:
       - name: Checkout
         uses: actions/checkout@v4
+
+    # ------------------------------------------
+    # Dependatbot security check
+    # Runs only when a PR is raised to master
+    # ------------------------------------------
+
+      - name: Dependency Review
+        if: github.event_name == 'pull_request'
+        uses: actions/dependency-review-action@v5
+        with:
+          fail-on-severity: high
 
       - name: Configure AWS Credentials
         uses: aws-actions/configure-aws-credentials@v4
@@ -82,14 +95,11 @@ jobs:
         run: terraform plan -input=false -no-color
 
 
-  # ==========================================
-  # MASTER DEPLOYMENT
-  #
-  # Does not run for the PR.
-  #
-  # Runs only after:
-  #   - PR is merged into master
-  # ==========================================
+    # ------------------------------------------
+    # MASTER DEPLOYMENT
+    # Does not run for the PR.
+    # Runs only after: PR merged to master
+    # ------------------------------------------
 
   terraform-master-deploy:
     name: Approved Master Deployment
@@ -118,10 +128,10 @@ jobs:
       - name: Checkout
         uses: actions/checkout@v4
 
-    # ==========================================
+    # ------------------------------------------
     # This step takes place only after the
     # production environment approval.
-    # ==========================================
+    # ------------------------------------------
     
       - name: Configure AWS Credentials
         uses: aws-actions/configure-aws-credentials@v4
