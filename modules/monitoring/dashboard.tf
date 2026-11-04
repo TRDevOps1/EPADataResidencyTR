@@ -1,5 +1,6 @@
-resource "aws_cloudwatch_dashboard" "infrastructure" {
+data "aws_region" "current" {}
 
+resource "aws_cloudwatch_dashboard" "infrastructure" {
   dashboard_name = "${var.project_name}-${var.environment}-infrastructure"
 
   dashboard_body = jsonencode({
@@ -49,6 +50,13 @@ resource "aws_cloudwatch_dashboard" "infrastructure" {
 
           period = 300
           stat   = "Average"
+
+          yAxis = {
+            left = {
+              min = 0
+              max = 100
+            }
+          }
         }
       },
 
@@ -69,7 +77,6 @@ resource "aws_cloudwatch_dashboard" "infrastructure" {
           region = data.aws_region.current.name
 
           metrics = [
-
             [
               "AWS/EC2",
               "NetworkIn",
@@ -79,7 +86,6 @@ resource "aws_cloudwatch_dashboard" "infrastructure" {
                 label = "DC Network In"
               }
             ],
-
             [
               "AWS/EC2",
               "NetworkOut",
@@ -89,7 +95,6 @@ resource "aws_cloudwatch_dashboard" "infrastructure" {
                 label = "DC Network Out"
               }
             ],
-
             [
               "AWS/EC2",
               "NetworkIn",
@@ -99,7 +104,6 @@ resource "aws_cloudwatch_dashboard" "infrastructure" {
                 label = "Windows Network In"
               }
             ],
-
             [
               "AWS/EC2",
               "NetworkOut",
@@ -109,7 +113,6 @@ resource "aws_cloudwatch_dashboard" "infrastructure" {
                 label = "Windows Network Out"
               }
             ],
-
             [
               "AWS/EC2",
               "NetworkIn",
@@ -119,7 +122,6 @@ resource "aws_cloudwatch_dashboard" "infrastructure" {
                 label = "Ubuntu Network In"
               }
             ],
-
             [
               "AWS/EC2",
               "NetworkOut",
@@ -137,7 +139,7 @@ resource "aws_cloudwatch_dashboard" "infrastructure" {
       },
 
       # ------------------------------------------------
-      # DNS health
+      # Webpage availability
       # ------------------------------------------------
 
       {
@@ -148,34 +150,66 @@ resource "aws_cloudwatch_dashboard" "infrastructure" {
         height = 6
 
         properties = {
-
-          title = "Active Directory DNS Health"
-
+          title  = "Webpage Availability"
           view   = "timeSeries"
           region = data.aws_region.current.name
 
           metrics = [
             [
-              "DiplomaProject/Infrastructure",
-              "AD_DNS_Health",
-              "InstanceId",
-              var.domain_controller_instance_id
+              "CloudWatchSynthetics",
+              "SuccessPercent",
+              "CanaryName",
+              aws_synthetics_canary.webpage_uptime.name,
+              {
+                label = "Webpage Success Percentage"
+              }
             ]
           ]
 
           period = 300
-          stat   = "Minimum"
+          stat   = "Average"
 
           yAxis = {
             left = {
               min = 0
-              max = 1
+              max = 100
             }
           }
+        }
+      },
+
+      # ------------------------------------------------
+      # Webpage response duration
+      # ------------------------------------------------
+
+      {
+        type   = "metric"
+        x      = 12
+        y      = 6
+        width  = 12
+        height = 6
+
+        properties = {
+          title  = "Webpage Response Duration"
+          view   = "timeSeries"
+          region = data.aws_region.current.name
+
+          metrics = [
+            [
+              "CloudWatchSynthetics",
+              "Duration",
+              "CanaryName",
+              aws_synthetics_canary.webpage_uptime.name,
+              {
+                label = "Webpage Response Duration"
+              }
+            ]
+          ]
+
+          period = 300
+          stat   = "Average"
         }
       }
     ]
   })
 }
-
-data "aws_region" "current" {}
