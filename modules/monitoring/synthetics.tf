@@ -202,8 +202,6 @@ resource "aws_synthetics_canary" "webpage_uptime" {
   zip_file        = data.archive_file.webpage_canary.output_path
   runtime_version = var.canary_runtime_version
 
-  start = true
-
   schedule {
     expression = "rate(5 minutes)"
   }
