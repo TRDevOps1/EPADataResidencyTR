@@ -98,3 +98,17 @@ module "compute" {
   ubuntu_instance_type  = "t3.micro"
   windows_instance_type = "t3.micro"
 }
+
+module "monitoring" {
+
+  source = "./modules/monitoring"
+
+  project_name = var.project_name
+  environment  = var.environment
+
+  domain_controller_instance_id = module.domain_controller.instance_id
+
+  windows_instance_id = module.compute.windows_instance_id
+
+  ubuntu_instance_id = module.compute.ubuntu_instance_id
+}
