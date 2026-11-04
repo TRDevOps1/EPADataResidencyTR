@@ -1,9 +1,31 @@
 <!DOCTYPE html>
-<html>
+<html lang="en">
 <head>
-<title>Terraform ECS Demo</title>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>AIG Data Residency PoC</title>
+
+    <style>
+        body {
+            background-color: navy;
+            color: white;
+            font-family: Arial, Helvetica, sans-serif;
+            padding: 40px;
+        }
+
+        h1 {
+            font-family: Georgia, "Times New Roman", serif;
+        }
+    </style>
 </head>
-<body style="background:#0070c0;color:white;text-align:center;padding-top:100px">
-<h1>AIG Test Website - 26th October v2</h1>
-</body>
-</html>
+
+<body>
+
+    <h1>AIG Data Residency PoC - v1</h1>
+
+    <p>
+        This page has been created to demonstrate a refresh of immutable infrastructure.
+    </p>
+
+    <p>
+        When an update is merged from the release branch, it is pushed to the ECS Fargate cluster.
