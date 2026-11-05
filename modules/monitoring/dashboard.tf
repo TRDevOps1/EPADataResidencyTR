@@ -138,78 +138,86 @@ resource "aws_cloudwatch_dashboard" "infrastructure" {
         }
       },
 
-      # ------------------------------------------------
-      # Webpage availability
-      # ------------------------------------------------
+        # ------------------------------------------------
+        # Webpage availability
+        # ------------------------------------------------
 
-      {
-        type   = "metric"
-        x      = 0
-        y      = 6
-        width  = 12
-        height = 6
+        {
+          type   = "metric"
+          x      = 0
+          y      = 6
+          width  = 12
+          height = 6
 
-        properties = {
-          title  = "Webpage Availability"
-          view   = "timeSeries"
-          region = data.aws_region.current.name
+          properties = {
+            title  = "Webpage Availability"
+            view   = "timeSeries"
+            region = data.aws_region.current.name
 
-          metrics = [
-            [
-              "CloudWatchSynthetics",
-              "SuccessPercent",
-              "CanaryName",
-              aws_synthetics_canary.webpage_uptime.name,
-              {
-                label = "Webpage Success Percentage"
-              }
+            metrics = [
+              [
+                "CloudWatchSynthetics",
+                "SuccessPercent",
+                "CanaryName",
+                aws_synthetics_canary.webpage_uptime.name,
+                "StepName",
+                "Check webpage availability",
+                {
+                  label = "Webpage Availability"
+                }
+              ]
             ]
-          ]
 
-          period = 300
-          stat   = "Average"
+            period = 300
+            stat   = "Average"
 
-          yAxis = {
-            left = {
-              min = 0
-              max = 100
+            yAxis = {
+              left = {
+                min = 0
+                max = 100
+              }
             }
           }
         }
-      },
 
-      # ------------------------------------------------
-      # Webpage response duration
-      # ------------------------------------------------
+        # ------------------------------------------------
+        # Webpage response duration
+        # ------------------------------------------------
 
-      {
-        type   = "metric"
-        x      = 12
-        y      = 6
-        width  = 12
-        height = 6
+        {
+          type   = "metric"
+          x      = 12
+          y      = 6
+          width  = 12
+          height = 6
 
-        properties = {
-          title  = "Webpage Response Duration"
-          view   = "timeSeries"
-          region = data.aws_region.current.name
+          properties = {
+            title  = "Webpage Response Duration"
+            view   = "timeSeries"
+            region = data.aws_region.current.name
 
-          metrics = [
-            [
-              "CloudWatchSynthetics",
-              "Duration",
-              "CanaryName",
-              aws_synthetics_canary.webpage_uptime.name,
-              {
-                label = "Webpage Response Duration"
-              }
+            metrics = [
+              [
+                "CloudWatchSynthetics",
+                "Duration",
+                "CanaryName",
+                aws_synthetics_canary.webpage_uptime.name,
+                "StepName",
+                "Check webpage availability",
+                {
+                  label = "Webpage Response Duration"
+                }
+              ]
             ]
-          ]
 
-          period = 300
-          stat   = "Average"
+            period = 300
+            stat   = "Average"
+
+            yAxis = {
+              left = {
+                min   = 0
+                label = "Milliseconds"
+              }
+            }
+          }
         }
-      }
-    ]
-  })
-}
