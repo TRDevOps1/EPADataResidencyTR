@@ -245,6 +245,7 @@ resource "aws_cloudwatch_metric_alarm" "webpage_uptime" {
 
   dimensions = {
     CanaryName = aws_synthetics_canary.webpage_uptime.name
+    StepName   = "Check webpage availability"
   }
 
   statistic           = "Average"
@@ -256,4 +257,32 @@ resource "aws_cloudwatch_metric_alarm" "webpage_uptime" {
   comparison_operator = "LessThanThreshold"
 
   treat_missing_data = "breaching"
+}
+
+# -----------------------------------------------------
+# Webpage response duration alarm
+# -----------------------------------------------------
+
+resource "aws_cloudwatch_metric_alarm" "webpage_response_duration" {
+  alarm_name = "${var.project_name}-${var.environment}-webpage-response-slow"
+
+  alarm_description = "The application webpage response duration exceeded 5 seconds"
+
+  namespace   = "CloudWatchSynthetics"
+  metric_name = "Duration"
+
+  dimensions = {
+    CanaryName = aws_synthetics_canary.webpage_uptime.name
+    StepName   = "Check webpage availability"
+  }
+
+  statistic           = "Average"
+  period              = 300
+  evaluation_periods  = 2
+  datapoints_to_alarm = 2
+
+  threshold           = 5000
+  comparison_operator = "GreaterThanThreshold"
+
+  treat_missing_data = "missing"
 }

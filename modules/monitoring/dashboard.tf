@@ -160,8 +160,10 @@ resource "aws_cloudwatch_dashboard" "infrastructure" {
               "SuccessPercent",
               "CanaryName",
               aws_synthetics_canary.webpage_uptime.name,
+              "StepName",
+              "Check webpage availability",
               {
-                label = "Webpage Success Percentage"
+                label = "Webpage Availability"
               }
             ]
           ]
@@ -200,6 +202,8 @@ resource "aws_cloudwatch_dashboard" "infrastructure" {
               "Duration",
               "CanaryName",
               aws_synthetics_canary.webpage_uptime.name,
+              "StepName",
+              "Check webpage availability",
               {
                 label = "Webpage Response Duration"
               }
@@ -208,6 +212,13 @@ resource "aws_cloudwatch_dashboard" "infrastructure" {
 
           period = 300
           stat   = "Average"
+
+          yAxis = {
+            left = {
+              min   = 0
+              label = "Milliseconds"
+            }
+          }
         }
       }
     ]
