@@ -139,7 +139,7 @@ resource "aws_cloudwatch_dashboard" "infrastructure" {
       },
 
       # ------------------------------------------------
-      # Webpage availability
+      # Disk I/O operations
       # ------------------------------------------------
 
       {
@@ -150,38 +150,74 @@ resource "aws_cloudwatch_dashboard" "infrastructure" {
         height = 6
 
         properties = {
-          title  = "Webpage Availability"
+          title  = "EC2 Disk I/O Operations"
           view   = "timeSeries"
           region = data.aws_region.current.name
 
           metrics = [
             [
-              "CloudWatchSynthetics",
-              "SuccessPercent",
-              "CanaryName",
-              aws_synthetics_canary.webpage_uptime.name,
-              "StepName",
-              "Check webpage availability",
+              "AWS/EC2",
+              "DiskReadOps",
+              "InstanceId",
+              var.domain_controller_instance_id,
               {
-                label = "Webpage Availability"
+                label = "DC Disk Reads"
+              }
+            ],
+            [
+              "AWS/EC2",
+              "DiskWriteOps",
+              "InstanceId",
+              var.domain_controller_instance_id,
+              {
+                label = "DC Disk Writes"
+              }
+            ],
+            [
+              "AWS/EC2",
+              "DiskReadOps",
+              "InstanceId",
+              var.windows_instance_id,
+              {
+                label = "Windows Disk Reads"
+              }
+            ],
+            [
+              "AWS/EC2",
+              "DiskWriteOps",
+              "InstanceId",
+              var.windows_instance_id,
+              {
+                label = "Windows Disk Writes"
+              }
+            ],
+            [
+              "AWS/EC2",
+              "DiskReadOps",
+              "InstanceId",
+              var.ubuntu_instance_id,
+              {
+                label = "Ubuntu Disk Reads"
+              }
+            ],
+            [
+              "AWS/EC2",
+              "DiskWriteOps",
+              "InstanceId",
+              var.ubuntu_instance_id,
+              {
+                label = "Ubuntu Disk Writes"
               }
             ]
           ]
 
           period = 300
-          stat   = "Average"
-
-          yAxis = {
-            left = {
-              min = 0
-              max = 100
-            }
-          }
+          stat   = "Sum"
         }
       },
 
       # ------------------------------------------------
-      # Webpage response duration
+      # EC2 status checks
       # ------------------------------------------------
 
       {
@@ -192,31 +228,43 @@ resource "aws_cloudwatch_dashboard" "infrastructure" {
         height = 6
 
         properties = {
-          title  = "Webpage Response Duration"
+          title  = "EC2 Status Checks"
           view   = "timeSeries"
           region = data.aws_region.current.name
 
           metrics = [
             [
-              "CloudWatchSynthetics",
-              "Duration",
-              "CanaryName",
-              aws_synthetics_canary.webpage_uptime.name,
-              "StepName",
-              "Check webpage availability",
+              "AWS/EC2",
+              "StatusCheckFailed",
+              "InstanceId",
+              var.domain_controller_instance_id,
               {
-                label = "Webpage Response Duration"
+                label = "Domain Controller"
+              }
+            ],
+            [
+              "...",
+              var.windows_instance_id,
+              {
+                label = "Windows Server"
+              }
+            ],
+            [
+              "...",
+              var.ubuntu_instance_id,
+              {
+                label = "Ubuntu Server"
               }
             ]
           ]
 
-          period = 300
-          stat   = "Average"
+          period = 60
+          stat   = "Maximum"
 
           yAxis = {
             left = {
-              min   = 0
-              label = "Milliseconds"
+              min = 0
+              max = 1
             }
           }
         }
