@@ -159,8 +159,9 @@ jobs:
 
           IMAGE_URI="${ACCOUNT_ID}.dkr.ecr.${AWS_REGION}.amazonaws.com/${ECR_REPOSITORY}:latest"
 
+        # Pulls the latest image each time
           docker build \
-            --pull \ #Pulls the latest image each time
+            --pull \ 
             -t "${IMAGE_URI}" \
             ./docker
 
