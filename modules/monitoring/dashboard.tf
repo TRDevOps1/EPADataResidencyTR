@@ -20,7 +20,7 @@ resource "aws_cloudwatch_dashboard" "infrastructure" {
         properties = {
           title  = "EC2 CPU Utilisation"
           view   = "timeSeries"
-          region = data.aws_region.current.name
+          region = data.aws_region.current.region
 
           metrics = [
             [
@@ -74,7 +74,7 @@ resource "aws_cloudwatch_dashboard" "infrastructure" {
         properties = {
           title  = "EC2 Network Traffic"
           view   = "timeSeries"
-          region = data.aws_region.current.name
+          region = data.aws_region.current.region
 
           metrics = [
             [
@@ -152,7 +152,7 @@ resource "aws_cloudwatch_dashboard" "infrastructure" {
         properties = {
           title  = "EC2 Disk I/O Operations"
           view   = "timeSeries"
-          region = data.aws_region.current.name
+          region = data.aws_region.current.region
 
           metrics = [
             [
@@ -230,7 +230,7 @@ resource "aws_cloudwatch_dashboard" "infrastructure" {
         properties = {
           title  = "EC2 Status Checks"
           view   = "timeSeries"
-          region = data.aws_region.current.name
+          region = data.aws_region.current.region
 
           metrics = [
             [
