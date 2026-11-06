@@ -109,5 +109,4 @@ module "monitoring" {
   windows_instance_id           = module.compute.windows_instance_id
   ubuntu_instance_id            = module.compute.ubuntu_instance_id
 
-  webpage_url = module.webapp.website_url
 }

@@ -43,7 +43,7 @@ resource "aws_cloudwatch_metric_alarm" "cpu_high" {
 }
 
 # -----------------------------------------------------
-# EC2 status check alarms
+# EC2 overall status check alarms
 # -----------------------------------------------------
 
 resource "aws_cloudwatch_metric_alarm" "status_check" {
@@ -54,6 +54,35 @@ resource "aws_cloudwatch_metric_alarm" "status_check" {
 
   namespace   = "AWS/EC2"
   metric_name = "StatusCheckFailed"
+
+  dimensions = {
+    InstanceId = each.value
+  }
+
+  statistic           = "Maximum"
+  period              = 60
+  evaluation_periods  = 2
+  datapoints_to_alarm = 2
+
+  threshold           = 0
+  comparison_operator = "GreaterThanThreshold"
+
+  treat_missing_data = "missing"
+}
+
+# -----------------------------------------------------
+# EC2 system status check alarms
+# Detects problems with the underlying AWS infrastructure
+# -----------------------------------------------------
+
+resource "aws_cloudwatch_metric_alarm" "system_status_check" {
+  for_each = local.instances
+
+  alarm_name        = "${var.project_name}-${var.environment}-${each.key}-system-status-check"
+  alarm_description = "EC2 system status check failed on ${each.key}"
+
+  namespace   = "AWS/EC2"
+  metric_name = "StatusCheckFailed_System"
 
   dimensions = {
     InstanceId = each.value
