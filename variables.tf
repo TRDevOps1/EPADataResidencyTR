@@ -4,16 +4,6 @@ variable "aws_region" {
   #default     = "eu-west-2"
 }
 
-#variable "instance_count" {
-#  description = "Number of application EC2 instances"
-#  type        = number
-#}
-
-#variable "instance_type" {
-#  description = "EC2 instance type"
-#  type        = string
-#}
-
 variable "project_name" {
   description = "Project name used in resource naming"
   type        = string
