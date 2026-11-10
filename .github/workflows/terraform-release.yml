@@ -17,25 +17,13 @@ env:
 
 jobs:
 
-  # ==========================================
-  # TEST / RELEASE VALIDATION
-  #
-  # Runs:
-  #   - Terraform format check, Validation, test, plan
-  #
-  # Does not run:
-  #   - Terraform apply, Docker build, ECR push or deployment
-  #
-  # Master branch is not referenced so will not be changed.
-  # ==========================================
-
   terraform-plan:
     name: Terraform Plan - ${{ github.ref_name }}
     runs-on: ubuntu-latest
 
-    # env:
-    # TF_VAR_domain_administrator_password: ${{ secrets.DOMAIN_ADMINISTRATOR_PASSWORD }}
-    # TF_VAR_fsx_service_account_password: ${{ secrets.FSX_SERVICE_ACCOUNT_PASSWORD }}
+    env:
+      TF_VAR_domain_administrator_password: ${{ secrets.DOMAIN_ADMINISTRATOR_PASSWORD }}
+      TF_VAR_fsx_service_account_password: ${{ secrets.FSX_SERVICE_ACCOUNT_PASSWORD }}
 
     defaults:
       run:
