@@ -17,18 +17,6 @@ env:
 
 jobs:
 
-  # ==========================================
-  # TEST / RELEASE VALIDATION
-  #
-  # Runs:
-  #   - Terraform format check, Validation, test, plan
-  #
-  # Does not run:
-  #   - Terraform apply, Docker build, ECR push or deployment
-  #
-  # Master branch is not referenced so will not be changed.
-  # ==========================================
-
   terraform-plan:
     name: Terraform Plan - ${{ github.ref_name }}
     runs-on: ubuntu-latest
