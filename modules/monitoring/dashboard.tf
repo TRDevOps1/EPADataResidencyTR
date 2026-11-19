@@ -33,14 +33,18 @@ resource "aws_cloudwatch_dashboard" "infrastructure" {
               }
             ],
             [
-              "...",
+              "AWS/EC2",
+              "CPUUtilization",
+              "InstanceId",
               var.windows_instance_id,
               {
                 label = "Windows Server"
               }
             ],
             [
-              "...",
+              "AWS/EC2",
+              "CPUUtilization",
+              "InstanceId",
               var.ubuntu_instance_id,
               {
                 label = "Ubuntu Server"
@@ -243,14 +247,18 @@ resource "aws_cloudwatch_dashboard" "infrastructure" {
               }
             ],
             [
-              "...",
+              "AWS/EC2",
+              "StatusCheckFailed",
+              "InstanceId",
               var.windows_instance_id,
               {
                 label = "Windows Server"
               }
             ],
             [
-              "...",
+              "AWS/EC2",
+              "StatusCheckFailed",
+              "InstanceId",
               var.ubuntu_instance_id,
               {
                 label = "Ubuntu Server"
@@ -260,6 +268,49 @@ resource "aws_cloudwatch_dashboard" "infrastructure" {
 
           period = 60
           stat   = "Maximum"
+
+          yAxis = {
+            left = {
+              min = 0
+              max = 1
+            }
+          }
+        }
+      },
+
+      # ------------------------------------------------
+      # Custom ECS deployment monitoring
+      # Metric published by GitHub Actions
+      # 1 = successful deployment
+      # 0 = failed deployment
+      # ------------------------------------------------
+
+      {
+        type   = "metric"
+        x      = 0
+        y      = 12
+        width  = 24
+        height = 6
+
+        properties = {
+          title  = "ECS Deployment Status"
+          view   = "timeSeries"
+          region = data.aws_region.current.region
+
+          metrics = [
+            [
+              "DevOpsDiploma",
+              "DeploymentStatus",
+              "Environment",
+              "Production",
+              {
+                label = "ECS Deployment Status"
+              }
+            ]
+          ]
+
+          period = 300
+          stat   = "Minimum"
 
           yAxis = {
             left = {

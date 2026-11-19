@@ -98,3 +98,32 @@ resource "aws_cloudwatch_metric_alarm" "system_status_check" {
 
   treat_missing_data = "missing"
 }
+
+# -----------------------------------------------------
+# ECS deployment status alarm
+# Custom metric published by GitHub Actions
+# 1 = deployment successful
+# 0 = deployment failed
+# -----------------------------------------------------
+
+resource "aws_cloudwatch_metric_alarm" "deployment_failure" {
+  alarm_name        = "${var.project_name}-${var.environment}-deployment-failure"
+  alarm_description = "ECS deployment failed to reach a stable state"
+
+  namespace   = "DevOpsDiploma"
+  metric_name = "DeploymentStatus"
+
+  dimensions = {
+    Environment = "Production"
+  }
+
+  statistic           = "Minimum"
+  period              = 300
+  evaluation_periods  = 1
+  datapoints_to_alarm = 1
+
+  threshold           = 1
+  comparison_operator = "LessThanThreshold"
+
+  treat_missing_data = "notBreaching"
+}
