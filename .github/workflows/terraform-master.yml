@@ -173,7 +173,7 @@ jobs:
 
           docker push "${IMAGE_URI}"
 
-            - name: Force ECS Deployment
+      - name: Force ECS Deployment
         id: ecs-deploy
         run: |
           aws ecs update-service \
