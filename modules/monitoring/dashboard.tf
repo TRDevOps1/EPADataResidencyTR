@@ -33,14 +33,18 @@ resource "aws_cloudwatch_dashboard" "infrastructure" {
               }
             ],
             [
-              "...",
+              "AWS/EC2",
+              "CPUUtilization",
+              "InstanceId",
               var.windows_instance_id,
               {
                 label = "Windows Server"
               }
             ],
             [
-              "...",
+              "AWS/EC2",
+              "CPUUtilization",
+              "InstanceId",
               var.ubuntu_instance_id,
               {
                 label = "Ubuntu Server"
@@ -243,14 +247,18 @@ resource "aws_cloudwatch_dashboard" "infrastructure" {
               }
             ],
             [
-              "...",
+              "AWS/EC2",
+              "StatusCheckFailed",
+              "InstanceId",
               var.windows_instance_id,
               {
                 label = "Windows Server"
               }
             ],
             [
-              "...",
+              "AWS/EC2",
+              "StatusCheckFailed",
+              "InstanceId",
               var.ubuntu_instance_id,
               {
                 label = "Ubuntu Server"
@@ -273,8 +281,8 @@ resource "aws_cloudwatch_dashboard" "infrastructure" {
       # ------------------------------------------------
       # Custom ECS deployment monitoring
       # Metric published by GitHub Actions
-      # 1 = Successful
-      # 0 = Failed
+      # 1 = successful deployment
+      # 0 = failed deployment
       # ------------------------------------------------
 
       {
@@ -312,3 +320,6 @@ resource "aws_cloudwatch_dashboard" "infrastructure" {
           }
         }
       }
+    ]
+  })
+}
