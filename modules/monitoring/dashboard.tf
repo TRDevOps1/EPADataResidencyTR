@@ -268,7 +268,47 @@ resource "aws_cloudwatch_dashboard" "infrastructure" {
             }
           }
         }
+      },
+
+      # ------------------------------------------------
+      # Custom ECS deployment monitoring
+      # Metric published by GitHub Actions
+      # 1 = Successful
+      # 0 = Failed
+      # ------------------------------------------------
+
+      {
+        type   = "metric"
+        x      = 0
+        y      = 12
+        width  = 24
+        height = 6
+
+        properties = {
+          title  = "ECS Deployment Status"
+          view   = "timeSeries"
+          region = data.aws_region.current.region
+
+          metrics = [
+            [
+              "DevOpsDiploma",
+              "DeploymentStatus",
+              "Environment",
+              "Production",
+              {
+                label = "ECS Deployment Status"
+              }
+            ]
+          ]
+
+          period = 300
+          stat   = "Minimum"
+
+          yAxis = {
+            left = {
+              min = 0
+              max = 1
+            }
+          }
+        }
       }
-    ]
-  })
-}
