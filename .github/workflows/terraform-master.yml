@@ -173,7 +173,7 @@ jobs:
 
           docker push "${IMAGE_URI}"
 
-      - name: Force ECS Deployment
+            - name: Force ECS Deployment
         id: ecs-deploy
         run: |
           aws ecs update-service \
@@ -182,9 +182,26 @@ jobs:
             --force-new-deployment \
             --region "$AWS_REGION"
 
+          echo "Waiting for ECS deployment to become stable..."
+
+          aws ecs wait services-stable \
+            --cluster "$ECS_CLUSTER" \
+            --services "$ECS_SERVICE" \
+            --region "$AWS_REGION"
+
+      # ------------------------------------------------
+      # TEMPORARY TEST ONLY
+      # Simulate an ECS deployment failure
+      # Remove these two lines after testing
+      # ------------------------------------------------
+          echo "Simulating deployment failure for monitoring test"
+          exit 1
+
       - name: Publish Deployment Success Metric
         if: steps.ecs-deploy.outcome == 'success'
         run: |
+          echo "Deployment successful - publishing DeploymentStatus=1"
+
           aws cloudwatch put-metric-data \
             --namespace "DevOpsDiploma" \
             --metric-name "DeploymentStatus" \
@@ -196,6 +213,8 @@ jobs:
       - name: Publish Deployment Failure Metric
         if: steps.ecs-deploy.outcome == 'failure'
         run: |
+          echo "Deployment failed - publishing DeploymentStatus=0"
+
           aws cloudwatch put-metric-data \
             --namespace "DevOpsDiploma" \
             --metric-name "DeploymentStatus" \
@@ -203,6 +222,3 @@ jobs:
             --unit Count \
             --dimensions Environment=Production \
             --region "$AWS_REGION"
-
-          echo "Simulating deployment failure for monitoring test"
-          exit 1
