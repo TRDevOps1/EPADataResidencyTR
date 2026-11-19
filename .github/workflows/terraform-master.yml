@@ -173,7 +173,7 @@ jobs:
 
           docker push "${IMAGE_URI}"
 
-      - name: Force ECS Deployment
+            - name: Force ECS Deployment
         id: ecs-deploy
         run: |
           aws ecs update-service \
@@ -189,11 +189,9 @@ jobs:
             --services "$ECS_SERVICE" \
             --region "$AWS_REGION"
 
-      # ------------------------------------------------
-      # TEMPORARY TEST ONLY
-      # Simulate an ECS deployment failure
-      # Remove these two lines after testing
-      # ------------------------------------------------
+          # TEMPORARY TEST ONLY
+          # Simulate an ECS deployment failure
+          # Remove these two lines after testing
           echo "Simulating deployment failure for monitoring test"
           exit 1
 
