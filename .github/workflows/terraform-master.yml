@@ -203,3 +203,6 @@ jobs:
             --unit Count \
             --dimensions Environment=Production \
             --region "$AWS_REGION"
+
+          echo "Simulating deployment failure for monitoring test"
+          exit 1
