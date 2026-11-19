@@ -174,9 +174,32 @@ jobs:
           docker push "${IMAGE_URI}"
 
       - name: Force ECS Deployment
+        id: ecs-deploy
         run: |
           aws ecs update-service \
             --cluster "$ECS_CLUSTER" \
             --service "$ECS_SERVICE" \
             --force-new-deployment \
+            --region "$AWS_REGION"
+
+      - name: Publish Deployment Success Metric
+        if: steps.ecs-deploy.outcome == 'success'
+        run: |
+          aws cloudwatch put-metric-data \
+            --namespace "DevOpsDiploma" \
+            --metric-name "DeploymentStatus" \
+            --value 1 \
+            --unit Count \
+            --dimensions Environment=Production \
+            --region "$AWS_REGION"
+
+      - name: Publish Deployment Failure Metric
+        if: steps.ecs-deploy.outcome == 'failure'
+        run: |
+          aws cloudwatch put-metric-data \
+            --namespace "DevOpsDiploma" \
+            --metric-name "DeploymentStatus" \
+            --value 0 \
+            --unit Count \
+            --dimensions Environment=Production \
             --region "$AWS_REGION"
